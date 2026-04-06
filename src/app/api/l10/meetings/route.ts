@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user || session.user.role !== "ceo") return NextResponse.json({ error: "Solo el CEO puede crear reuniones L10" }, { status: 403 });
 
   const { quarterId } = await request.json();
 

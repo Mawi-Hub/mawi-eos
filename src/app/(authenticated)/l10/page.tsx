@@ -74,7 +74,7 @@ export default async function L10Page() {
             Preparación bisemanal — Q{activeQuarter.quarter} {activeQuarter.year}
           </p>
         </div>
-        <CreateMeetingButton quarterId={activeQuarter.id} />
+        {session?.user?.role === "ceo" && <CreateMeetingButton quarterId={activeQuarter.id} />}
       </div>
 
       {meeting && (
