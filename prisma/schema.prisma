@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  role         String   // ceo, sales, cs, product, engineering
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  ownedMetrics     ScorecardMetric[]
+  scorecardEntries ScorecardEntry[]
+  rocks            Rock[]
+  winsAndChallenges WinChallenge[]
+
+  @@map("users")
+}
+
+model Quarter {
+  id        String   @id @default(uuid())
+  year      Int
+  quarter   Int
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+  isActive  Boolean  @default(false) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  scorecardEntries ScorecardEntry[]
+  rocks            Rock[]
+  winsAndChallenges WinChallenge[]
+
+  @@unique([year, quarter])
+  @@map("quarters")
+}
+
+model ScorecardMetric {
+  id              String   @id @default(uuid())
+  name            String
+  category        String   // revenue_health, sales_health, customer_success, product_engineering, financial_health
+  ownerId         String   @map("owner_id")
+  targetValue     String?  @map("target_value")
+  targetNumeric   Float?   @map("target_numeric")
+  targetDirection String   @default("above") @map("target_direction") // above, below, equal
+  frequency       String   // weekly, biweekly, monthly
+  unit            String?  // %, $, hours, count, ratio, months
+  calculation     String?
+  dataSource      String   @default("manual") @map("data_source") // manual, chartmogul, hubspot, posthog
+  sortOrder       Int      @default(0) @map("sort_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  owner   User             @relation(fields: [ownerId], references: [id])
+  entries ScorecardEntry[]
+
+  @@map("scorecard_metrics")
+}
+
+model ScorecardEntry {
+  id            String   @id @default(uuid())
+  metricId      String   @map("metric_id")
+  quarterId     String   @map("quarter_id")
+  periodStart   DateTime @map("period_start")
+  periodEnd     DateTime @map("period_end")
+  actualValue   Float?   @map("actual_value")
+  actualDisplay String?  @map("actual_display")
+  status        String   @default("pending") // on_track, off_track, riesgo, pending
+  notes         String?
+  enteredById   String?  @map("entered_by_id")
+  autoSynced    Boolean  @default(false) @map("auto_synced")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  metric    ScorecardMetric @relation(fields: [metricId], references: [id])
+  quarter   Quarter         @relation(fields: [quarterId], references: [id])
+  enteredBy User?           @relation(fields: [enteredById], references: [id])
+
+  @@unique([metricId, periodStart])
+  @@map("scorecard_entries")
+}
+
+model Rock {
+  id           String   @id @default(uuid())
+  quarterId    String   @map("quarter_id")
+  ownerId      String   @map("owner_id")
+  title        String
+  description  String
+  deliverable  String
+  doneCriteria String   @map("done_criteria")
+  progress     Int      @default(0)
+  risk         String?
+  status       String   @default("on_track") // on_track, off_track, riesgo, done, not_done
+  finalStatus  String?  @map("final_status") // done, not_done (set at quarter end)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  quarter Quarter @relation(fields: [quarterId], references: [id])
+  owner   User    @relation(fields: [ownerId], references: [id])
+
+  @@map("rocks")
+}
+
+model WinChallenge {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  quarterId      String   @map("quarter_id")
+  reportDate     DateTime @map("report_date")
+  entryType      String   @default("win") @map("entry_type") // win, challenge
+  wins           String?  // What was done (for wins)
+  result         String?  // Measurable result (for wins)
+  keyChallenge   String?  @map("key_challenge") // Challenge description
+  priority       String   @default("medio") // alto, medio, bajo (for challenges)
+  followUpAction String?  @map("follow_up_action") // Next action (for challenges)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id])
+  quarter Quarter @relation(fields: [quarterId], references: [id])
+
+  @@map("wins_challenges")
+}
+
+model ApiSyncCache {
+  id       String   @id @default(uuid())
+  source   String   // chartmogul, hubspot, posthog
+  dataKey  String   @map("data_key")
+  data     Json
+  syncedAt DateTime @map("synced_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([source, dataKey])
+  @@map("api_sync_cache")
+}

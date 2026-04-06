@@ -8,19 +8,25 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-poppins);
+  --font-mono: ui-monospace, SFMono-Regular, monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Mawi brand palette */
+  --color-mawi-50: #f3eefa;
+  --color-mawi-100: #e4d9f3;
+  --color-mawi-200: #c9b3e7;
+  --color-mawi-300: #a782d6;
+  --color-mawi-400: #8455c3;
+  --color-mawi-500: #6732ab;
+  --color-mawi-600: #4f1d8e;
+  --color-mawi-700: #3d1472;
+  --color-mawi-800: #2F0B58;
+  --color-mawi-900: #230842;
+  --color-mawi-950: #16052b;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
