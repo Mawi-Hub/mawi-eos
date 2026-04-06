@@ -16,10 +16,13 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  ownedMetrics     ScorecardMetric[]
-  scorecardEntries ScorecardEntry[]
-  rocks            Rock[]
+  ownedMetrics      ScorecardMetric[]
+  scorecardEntries  ScorecardEntry[]
+  rocks             Rock[]
   winsAndChallenges WinChallenge[]
+  issuesRaised      L10Issue[]      @relation("issuesRaised")
+  issuesOwned       L10Issue[]      @relation("issuesOwned")
+  commitments       L10Commitment[]
 
   @@map("users")
 }
@@ -36,6 +39,7 @@ model Quarter {
   scorecardEntries ScorecardEntry[]
   rocks            Rock[]
   winsAndChallenges WinChallenge[]
+  l10Meetings      L10Meeting[]
 
   @@unique([year, quarter])
   @@map("quarters")
@@ -126,6 +130,59 @@ model WinChallenge {
   quarter Quarter @relation(fields: [quarterId], references: [id])
 
   @@map("wins_challenges")
+}
+
+model L10Meeting {
+  id        String   @id @default(uuid())
+  quarterId String   @map("quarter_id")
+  date      DateTime
+  status    String   @default("upcoming") // upcoming, in_progress, completed
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quarter     Quarter      @relation(fields: [quarterId], references: [id])
+  issues      L10Issue[]
+  commitments L10Commitment[]
+
+  @@map("l10_meetings")
+}
+
+model L10Issue {
+  id          String   @id @default(uuid())
+  meetingId   String   @map("meeting_id")
+  raisedById  String   @map("raised_by_id")
+  title       String
+  description String?
+  priority    String   @default("medio") // alto, medio, bajo
+  idsStatus   String   @default("identify") @map("ids_status") // identify, discuss, solve, resolved
+  resolution  String?
+  ownerId     String?  @map("owner_id")
+  dueDate     DateTime? @map("due_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  meeting  L10Meeting @relation(fields: [meetingId], references: [id])
+  raisedBy User       @relation("issuesRaised", fields: [raisedById], references: [id])
+  owner    User?      @relation("issuesOwned", fields: [ownerId], references: [id])
+
+  @@map("l10_issues")
+}
+
+model L10Commitment {
+  id        String    @id @default(uuid())
+  meetingId String    @map("meeting_id")
+  ownerId   String    @map("owner_id")
+  action    String
+  dueDate   DateTime  @map("due_date")
+  done      Boolean   @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  meeting L10Meeting @relation(fields: [meetingId], references: [id])
+  owner   User       @relation(fields: [ownerId], references: [id])
+
+  @@map("l10_commitments")
 }
 
 model ApiSyncCache {

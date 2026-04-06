@@ -10,6 +10,7 @@ import {
   Mountain,
   Trophy,
   Calendar,
+  Users,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ const nav = [
   { href: "/scorecard", label: "Scorecard", icon: Target, ceoOnly: false },
   { href: "/rocks", label: "Rocks", icon: Mountain, ceoOnly: false },
   { href: "/wins-challenges", label: "Wins & Challenges", icon: Trophy, ceoOnly: false },
+  { href: "/l10", label: "L10 Meeting", icon: Users, ceoOnly: false },
   { href: "/quarterly", label: "Trimestres", icon: Calendar, ceoOnly: false },
 ];
 
