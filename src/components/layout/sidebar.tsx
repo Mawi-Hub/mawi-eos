@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import {
   LayoutDashboard,
   Target,
@@ -69,11 +70,9 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
             <div className="text-sm font-medium text-gray-900">{userName}</div>
             <div className="text-xs capitalize text-gray-400">{userRole}</div>
           </div>
-          <form action="/api/auth/signout" method="POST">
-            <button type="submit" className="text-gray-400 hover:text-gray-600">
-              <LogOut className="h-4 w-4" />
-            </button>
-          </form>
+          <button onClick={() => signOut({ callbackUrl: "/login" })} className="text-gray-400 hover:text-gray-600">
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </aside>
