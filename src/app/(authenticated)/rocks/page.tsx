@@ -71,6 +71,10 @@ export default async function RocksPage() {
                       </span>
                     </div>
 
+                    <p className="mt-1 text-[10px] text-gray-400">
+                      Actualizado: {new Date(rock.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+
                     <p className="mt-2 text-xs text-gray-500 line-clamp-2">{rock.description}</p>
 
                     <div className="mt-4">

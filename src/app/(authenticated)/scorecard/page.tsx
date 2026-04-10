@@ -55,6 +55,7 @@ export default async function ScorecardPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Target</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Estado</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Frecuencia</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Actualizado</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Acciones</th>
                 </tr>
               </thead>
@@ -82,6 +83,11 @@ export default async function ScorecardPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs capitalize text-gray-500">{metric.frequency}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {lastEntry?.updatedAt
+                          ? new Date(lastEntry.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })
+                          : "—"}
+                      </td>
                       <td className="px-4 py-3">
                         {isOwner && activeQuarter && (
                           <ScorecardEntryForm

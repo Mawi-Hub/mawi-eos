@@ -22,7 +22,6 @@ export default async function L10Page() {
     return <div className="py-12 text-center text-gray-500">No hay trimestre activo.</div>;
   }
 
-  // Get or find the latest meeting
   const meeting = await prisma.l10Meeting.findFirst({
     where: { quarterId: activeQuarter.id },
     orderBy: { date: "desc" },
@@ -32,36 +31,61 @@ export default async function L10Page() {
     },
   });
 
-  // 1. Recent wins (last 14 days)
+  // 1. Recent wins (last 14 days) grouped by user
   const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const recentWins = await prisma.winChallenge.findMany({
     where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: twoWeeksAgo } },
     include: { user: true },
-    orderBy: { reportDate: "desc" },
+    orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
   });
 
-  // 2. Red scorecards (off_track or riesgo)
+  // 2. Red scorecards grouped by owner
   const allMetrics = await prisma.scorecardMetric.findMany({
     where: { isActive: true },
     include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 1 } },
+    orderBy: [{ owner: { name: "asc" } }, { sortOrder: "asc" }],
   });
   const redMetrics = allMetrics.filter((m) => {
     const status = m.entries[0]?.status;
     return status === "off_track" || status === "riesgo";
   });
 
-  // 3. Off-track rocks
+  // Group red metrics by owner
+  const redByOwner: Record<string, typeof redMetrics> = {};
+  for (const m of redMetrics) {
+    const name = m.owner.name;
+    if (!redByOwner[name]) redByOwner[name] = [];
+    redByOwner[name].push(m);
+  }
+
+  // 3. Off-track rocks grouped by owner
   const offTrackRocks = await prisma.rock.findMany({
     where: { quarterId: activeQuarter.id, status: { in: ["off_track", "riesgo"] }, finalStatus: null },
     include: { owner: true },
+    orderBy: [{ owner: { name: "asc" } }, { createdAt: "asc" }],
   });
 
-  // 4. Recent challenges as pre-work issues
+  const rocksByOwner: Record<string, typeof offTrackRocks> = {};
+  for (const r of offTrackRocks) {
+    const name = r.owner.name;
+    if (!rocksByOwner[name]) rocksByOwner[name] = [];
+    rocksByOwner[name].push(r);
+  }
+
+  // 4. Recent challenges
   const recentChallenges = await prisma.winChallenge.findMany({
     where: { quarterId: activeQuarter.id, entryType: "challenge", reportDate: { gte: twoWeeksAgo } },
     include: { user: true },
-    orderBy: { reportDate: "desc" },
+    orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
   });
+
+  // Group wins by user
+  const winsByUser: Record<string, typeof recentWins> = {};
+  for (const w of recentWins) {
+    const name = w.user.name;
+    if (!winsByUser[name]) winsByUser[name] = [];
+    winsByUser[name].push(w);
+  }
 
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
 
@@ -87,7 +111,7 @@ export default async function L10Page() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Column 1 */}
         <div className="space-y-6">
-          {/* 1. Wins */}
+          {/* 1. Wins — grouped by person */}
           <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center gap-2">
@@ -96,25 +120,26 @@ export default async function L10Page() {
                 <span className="text-xs text-gray-400">10 min — 1 win por líder</span>
               </div>
             </div>
-            <div className="divide-y divide-gray-50 px-5">
-              {recentWins.length === 0 ? (
+            <div className="px-5">
+              {Object.keys(winsByUser).length === 0 ? (
                 <p className="py-4 text-sm text-gray-400">Sin wins registrados en las últimas 2 semanas</p>
               ) : (
-                recentWins.map((w) => (
-                  <div key={w.id} className="py-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-gray-900">{w.user.name}</span>
-                      <span className="text-xs text-gray-400">{new Date(w.reportDate).toLocaleDateString("es", { day: "numeric", month: "short" })}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-gray-700">{w.wins}</p>
-                    {w.result && <p className="mt-1 text-xs font-medium text-emerald-600">{w.result}</p>}
+                Object.entries(winsByUser).map(([userName, wins]) => (
+                  <div key={userName} className="border-b border-gray-50 py-3 last:border-0">
+                    <div className="mb-1 text-xs font-semibold text-mawi-700">{userName}</div>
+                    {wins.map((w) => (
+                      <div key={w.id} className="mt-1.5">
+                        <p className="text-sm text-gray-700">{w.wins}</p>
+                        {w.result && <p className="mt-0.5 text-xs font-medium text-emerald-600">{w.result}</p>}
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
             </div>
           </section>
 
-          {/* 2. Scorecard Rojos */}
+          {/* 2. Scorecard Rojos — grouped by person */}
           <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center gap-2">
@@ -123,32 +148,39 @@ export default async function L10Page() {
                 <span className="text-xs text-gray-400">10 min</span>
               </div>
             </div>
-            <div className="divide-y divide-gray-50 px-5">
-              {redMetrics.length === 0 ? (
+            <div className="px-5">
+              {Object.keys(redByOwner).length === 0 ? (
                 <p className="py-4 text-sm text-emerald-600">Todas las métricas en verde</p>
               ) : (
-                redMetrics.map((m) => {
-                  const entry = m.entries[0];
-                  const cfg = STATUS_CONFIG[entry?.status || "pending"];
-                  return (
-                    <div key={m.id} className="flex items-center justify-between py-3">
-                      <div>
-                        <span className="text-sm font-medium text-gray-900">{m.name}</span>
-                        <span className="ml-2 text-xs text-gray-400">{m.owner.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-700">{entry?.actualDisplay || entry?.actualValue || "—"}</span>
-                        <span className="text-xs text-gray-400">/ {m.targetValue}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}>{cfg.label}</span>
-                      </div>
-                    </div>
-                  );
-                })
+                Object.entries(redByOwner).map(([ownerName, metrics]) => (
+                  <div key={ownerName} className="border-b border-gray-50 py-3 last:border-0">
+                    <div className="mb-2 text-xs font-semibold text-mawi-700">{ownerName}</div>
+                    {metrics.map((m) => {
+                      const entry = m.entries[0];
+                      const cfg = STATUS_CONFIG[entry?.status || "pending"];
+                      return (
+                        <div key={m.id} className="flex items-center justify-between py-1.5">
+                          <span className="text-sm text-gray-900">{m.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-700">{entry?.actualDisplay || entry?.actualValue || "—"}</span>
+                            <span className="text-xs text-gray-400">/ {m.targetValue}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}>{cfg.label}</span>
+                            {entry?.updatedAt && (
+                              <span className="text-[10px] text-gray-300">
+                                {new Date(entry.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
               )}
             </div>
           </section>
 
-          {/* 3. Rocks Off Track */}
+          {/* 3. Rocks Off Track — grouped by person */}
           <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center gap-2">
@@ -157,28 +189,35 @@ export default async function L10Page() {
                 <span className="text-xs text-gray-400">10 min</span>
               </div>
             </div>
-            <div className="divide-y divide-gray-50 px-5">
-              {offTrackRocks.length === 0 ? (
+            <div className="px-5">
+              {Object.keys(rocksByOwner).length === 0 ? (
                 <p className="py-4 text-sm text-emerald-600">Todos los rocks on track</p>
               ) : (
-                offTrackRocks.map((r) => {
-                  const cfg = STATUS_CONFIG[r.status];
-                  return (
-                    <div key={r.id} className="py-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-900">{r.title}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}>{cfg.label}</span>
-                      </div>
-                      <div className="mt-1 text-xs text-gray-500">
-                        <span className="font-medium">{r.owner.name}</span>
-                        {r.risk && <span className="ml-2 text-amber-600">Riesgo: {r.risk}</span>}
-                      </div>
-                      <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
-                        <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${r.progress}%` }} />
-                      </div>
-                    </div>
-                  );
-                })
+                Object.entries(rocksByOwner).map(([ownerName, rocks]) => (
+                  <div key={ownerName} className="border-b border-gray-50 py-3 last:border-0">
+                    <div className="mb-2 text-xs font-semibold text-mawi-700">{ownerName}</div>
+                    {rocks.map((r) => {
+                      const cfg = STATUS_CONFIG[r.status];
+                      return (
+                        <div key={r.id} className="py-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-900">{r.title}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}>{cfg.label}</span>
+                              <span className="text-[10px] text-gray-300">
+                                {new Date(r.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })}
+                              </span>
+                            </div>
+                          </div>
+                          {r.risk && <p className="mt-0.5 text-xs text-amber-600">Riesgo: {r.risk}</p>}
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
+                            <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${r.progress}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
               )}
             </div>
           </section>
@@ -199,7 +238,6 @@ export default async function L10Page() {
               </div>
             </div>
             <div className="px-5">
-              {/* Pre-work: recent challenges */}
               {recentChallenges.length > 0 && (
                 <div className="border-b border-gray-100 py-3">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Pre-work (challenges recientes)</div>
@@ -213,7 +251,6 @@ export default async function L10Page() {
                 </div>
               )}
 
-              {/* Meeting issues */}
               {!meeting ? (
                 <p className="py-4 text-sm text-gray-400">Crea una reunión para agregar issues</p>
               ) : meeting.issues.length === 0 ? (
