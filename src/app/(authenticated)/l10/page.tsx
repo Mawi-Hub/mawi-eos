@@ -6,6 +6,8 @@ import { AddIssueButton } from "./add-issue-button";
 import { AddCommitmentButton } from "./add-commitment-button";
 import { ResolveIssueButton } from "./resolve-issue-button";
 import { ToggleCommitmentButton } from "./toggle-commitment-button";
+import EditIssueButton from "./edit-issue-button";
+import EditCommitmentButton from "./edit-commitment-button";
 
 const IDS_LABELS: Record<string, { label: string; color: string }> = {
   identify: { label: "Identify", color: "bg-yellow-100 text-yellow-800" },
@@ -270,10 +272,20 @@ export default async function L10Page() {
                           </div>
                         </div>
                         {issue.description && <p className="mt-1 text-xs text-gray-500">{issue.description}</p>}
-                        <div className="mt-1 text-xs text-gray-400">
-                          Planteado por {issue.raisedBy.name}
-                          {issue.owner && <span> · Owner: <span className="font-medium text-gray-600">{issue.owner.name}</span></span>}
-                          {issue.dueDate && <span> · Para: {new Date(issue.dueDate).toLocaleDateString("es", { day: "numeric", month: "short" })}</span>}
+                        <div className="mt-1 flex items-center justify-between text-xs text-gray-400">
+                          <div>
+                            Planteado por {issue.raisedBy.name}
+                            {issue.owner && <span> · Owner: <span className="font-medium text-gray-600">{issue.owner.name}</span></span>}
+                            {issue.dueDate && <span> · Para: {new Date(issue.dueDate).toLocaleDateString("es", { day: "numeric", month: "short" })}</span>}
+                          </div>
+                          {(issue.raisedById === session?.user?.id || session?.user?.role === "ceo") && (
+                            <EditIssueButton
+                              issueId={issue.id}
+                              currentTitle={issue.title}
+                              currentDescription={issue.description || ""}
+                              currentPriority={issue.priority}
+                            />
+                          )}
                         </div>
                         {issue.resolution && (
                           <div className="mt-2 rounded bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
@@ -319,6 +331,15 @@ export default async function L10Page() {
                         — {new Date(c.dueDate).toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" })}
                       </span>
                     </div>
+                    {(c.ownerId === session?.user?.id || session?.user?.role === "ceo") && (
+                      <EditCommitmentButton
+                        commitmentId={c.id}
+                        currentAction={c.action}
+                        currentOwnerId={c.ownerId}
+                        currentDueDate={new Date(c.dueDate).toISOString().split("T")[0]}
+                        users={users}
+                      />
+                    )}
                   </div>
                 ))
               )}

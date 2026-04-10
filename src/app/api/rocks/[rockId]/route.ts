@@ -23,6 +23,10 @@ export async function PATCH(
   const updated = await prisma.rock.update({
     where: { id: rockId },
     data: {
+      title: body.title ?? rock.title,
+      description: body.description ?? rock.description,
+      deliverable: body.deliverable ?? rock.deliverable,
+      doneCriteria: body.doneCriteria ?? rock.doneCriteria,
       progress: body.progress ?? rock.progress,
       status: body.status ?? rock.status,
       risk: body.risk !== undefined ? body.risk : rock.risk,
@@ -31,4 +35,24 @@ export async function PATCH(
   });
 
   return NextResponse.json(updated);
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ rockId: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { rockId } = await params;
+  const rock = await prisma.rock.findUnique({ where: { id: rockId } });
+
+  if (!rock || rock.ownerId !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await prisma.rock.delete({ where: { id: rockId } });
+  return NextResponse.json({ success: true });
 }

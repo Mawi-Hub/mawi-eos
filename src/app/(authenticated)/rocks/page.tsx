@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { STATUS_CONFIG } from "@/lib/utils";
 import { RockForm } from "./rock-form";
 import { RockUpdateForm } from "./rock-update-form";
+import { RockEditForm } from "./rock-edit-form";
 
 export default async function RocksPage() {
   const session = await auth();
@@ -108,8 +109,15 @@ export default async function RocksPage() {
                     </div>
 
                     {isOwner && (
-                      <div className="mt-4 border-t border-gray-100 pt-3">
+                      <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
                         <RockUpdateForm rockId={rock.id} currentProgress={rock.progress} currentStatus={rock.status} currentRisk={rock.risk || ""} />
+                        <RockEditForm
+                          rockId={rock.id}
+                          currentTitle={rock.title}
+                          currentDescription={rock.description}
+                          currentDeliverable={rock.deliverable}
+                          currentDoneCriteria={rock.doneCriteria}
+                        />
                       </div>
                     )}
                   </div>

@@ -24,12 +24,26 @@ export async function PATCH(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { commitmentId, done } = await request.json();
+  const { commitmentId, done, action, ownerId, dueDate } = await request.json();
 
   const commitment = await prisma.l10Commitment.update({
     where: { id: commitmentId },
-    data: { done },
+    data: {
+      ...(done !== undefined && { done }),
+      ...(action !== undefined && { action }),
+      ...(ownerId !== undefined && { ownerId }),
+      ...(dueDate !== undefined && { dueDate: new Date(dueDate) }),
+    },
   });
 
   return NextResponse.json(commitment);
+}
+
+export async function DELETE(request: Request) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { commitmentId } = await request.json();
+  await prisma.l10Commitment.delete({ where: { id: commitmentId } });
+  return NextResponse.json({ success: true });
 }

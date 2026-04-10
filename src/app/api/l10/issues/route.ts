@@ -25,17 +25,32 @@ export async function PATCH(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { issueId, idsStatus, resolution, ownerId, dueDate } = await request.json();
+  const { issueId, idsStatus, resolution, ownerId, dueDate, title, description, priority } = await request.json();
+
+  const existing = await prisma.l10Issue.findUnique({ where: { id: issueId } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const issue = await prisma.l10Issue.update({
     where: { id: issueId },
     data: {
-      idsStatus,
+      ...(idsStatus !== undefined && { idsStatus }),
       ...(resolution !== undefined && { resolution }),
       ...(ownerId !== undefined && { ownerId }),
-      ...(dueDate !== undefined && { dueDate: new Date(dueDate) }),
+      ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+      ...(title !== undefined && { title }),
+      ...(description !== undefined && { description }),
+      ...(priority !== undefined && { priority }),
     },
   });
 
   return NextResponse.json(issue);
+}
+
+export async function DELETE(request: Request) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { issueId } = await request.json();
+  await prisma.l10Issue.delete({ where: { id: issueId } });
+  return NextResponse.json({ success: true });
 }
