@@ -8,6 +8,7 @@ import { ResolveIssueButton } from "./resolve-issue-button";
 import { ToggleCommitmentButton } from "./toggle-commitment-button";
 import EditIssueButton from "./edit-issue-button";
 import EditCommitmentButton from "./edit-commitment-button";
+import CloseMeetingButton from "./close-meeting-button";
 
 const IDS_LABELS: Record<string, { label: string; color: string }> = {
   identify: { label: "Identify", color: "bg-yellow-100 text-yellow-800" },
@@ -24,11 +25,23 @@ export default async function L10Page() {
     return <div className="py-12 text-center text-gray-500">No hay trimestre activo.</div>;
   }
 
+  // Active meeting = most recent non-completed. Fall back to latest.
   const meeting = await prisma.l10Meeting.findFirst({
-    where: { quarterId: activeQuarter.id },
+    where: { quarterId: activeQuarter.id, status: { not: "completed" } },
     orderBy: { date: "desc" },
     include: {
       issues: { include: { raisedBy: true, owner: true }, orderBy: { createdAt: "asc" } },
+      commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  // Past completed meetings for history
+  const pastMeetings = await prisma.l10Meeting.findMany({
+    where: { quarterId: activeQuarter.id, status: "completed" },
+    orderBy: { date: "desc" },
+    include: {
+      _count: { select: { issues: true, commitments: true } },
+      issues: { include: { owner: true }, where: { idsStatus: "resolved" }, orderBy: { createdAt: "asc" } },
       commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
     },
   });
@@ -104,9 +117,14 @@ export default async function L10Page() {
       </div>
 
       {meeting && (
-        <div className="rounded-lg bg-mawi-50 px-4 py-2 text-sm text-mawi-700">
-          Reunión activa: {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
-          <span className="ml-2 rounded-full bg-mawi-100 px-2 py-0.5 text-xs font-medium capitalize">{meeting.status}</span>
+        <div className="flex items-center justify-between rounded-lg bg-mawi-50 px-4 py-2">
+          <div className="text-sm text-mawi-700">
+            Reunión activa: {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
+            <span className="ml-2 rounded-full bg-mawi-100 px-2 py-0.5 text-xs font-medium capitalize">{meeting.status}</span>
+          </div>
+          {session?.user?.role === "ceo" && (
+            <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
+          )}
         </div>
       )}
 
@@ -347,6 +365,79 @@ export default async function L10Page() {
           </section>
         </div>
       </div>
+
+      {/* History */}
+      {pastMeetings.length > 0 && (
+        <div className="pt-4">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">Histórico de reuniones</h2>
+          <div className="space-y-4">
+            {pastMeetings.map((pm) => (
+              <details key={pm.id} className="rounded-lg border border-gray-200 bg-white">
+                <summary className="flex cursor-pointer items-center justify-between px-5 py-3 hover:bg-gray-50">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900">
+                      {new Date(pm.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                    </div>
+                    <div className="mt-0.5 text-xs text-gray-500">
+                      {pm._count.issues} issues · {pm._count.commitments} compromisos
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Completada</span>
+                    {session?.user?.role === "ceo" && (
+                      <CloseMeetingButton meetingId={pm.id} currentNotes={pm.notes || ""} isCompleted={true} />
+                    )}
+                  </div>
+                </summary>
+                <div className="border-t border-gray-100 px-5 py-4 space-y-4">
+                  {pm.notes && (
+                    <div>
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Resumen de la reunión</div>
+                      <p className="text-sm text-gray-700 whitespace-pre-line">{pm.notes}</p>
+                    </div>
+                  )}
+
+                  {pm.issues.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Issues resueltos</div>
+                      <div className="space-y-2">
+                        {pm.issues.map((iss) => (
+                          <div key={iss.id} className="rounded-md bg-emerald-50 px-3 py-2 text-xs">
+                            <div className="font-medium text-gray-900">{iss.title}</div>
+                            {iss.resolution && <div className="mt-0.5 text-emerald-800">→ {iss.resolution}</div>}
+                            {iss.owner && (
+                              <div className="mt-0.5 text-gray-500">
+                                {iss.owner.name}
+                                {iss.dueDate && ` · ${new Date(iss.dueDate).toLocaleDateString("es", { day: "numeric", month: "short" })}`}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {pm.commitments.length > 0 && (
+                    <div>
+                      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">Compromisos</div>
+                      <div className="space-y-1">
+                        {pm.commitments.map((c) => (
+                          <div key={c.id} className="flex items-center gap-2 text-xs">
+                            <span className={`h-2 w-2 rounded-full ${c.done ? "bg-emerald-500" : "bg-gray-300"}`} />
+                            <span className={c.done ? "text-gray-500 line-through" : "text-gray-900"}>{c.action}</span>
+                            <span className="text-mawi-600 font-medium">· {c.owner.name}</span>
+                            <span className="text-gray-400">· {new Date(c.dueDate).toLocaleDateString("es", { day: "numeric", month: "short" })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
