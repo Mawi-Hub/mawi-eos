@@ -46,10 +46,15 @@ export default async function L10Page() {
     },
   });
 
-  // 1. Recent wins (last 14 days) grouped by user
-  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  // Cycle cutoff = when the last meeting was closed (falls back to 14 days ago)
+  const lastClosedMeeting = pastMeetings[0];
+  const cycleStart = lastClosedMeeting
+    ? new Date(lastClosedMeeting.updatedAt)
+    : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+  // 1. Wins for current cycle grouped by user
   const recentWins = await prisma.winChallenge.findMany({
-    where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: twoWeeksAgo } },
+    where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: cycleStart } },
     include: { user: true },
     orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
   });
@@ -87,9 +92,9 @@ export default async function L10Page() {
     rocksByOwner[name].push(r);
   }
 
-  // 4. Recent challenges
+  // 4. Current cycle challenges
   const recentChallenges = await prisma.winChallenge.findMany({
-    where: { quarterId: activeQuarter.id, entryType: "challenge", reportDate: { gte: twoWeeksAgo } },
+    where: { quarterId: activeQuarter.id, entryType: "challenge", reportDate: { gte: cycleStart } },
     include: { user: true },
     orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
   });

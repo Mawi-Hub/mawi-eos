@@ -6,8 +6,15 @@ import AddChallengeButton from "./add-challenge-button";
 import EditWinButton from "./edit-win-button";
 import EditChallengeButton from "./edit-challenge-button";
 
-export default async function WinsChallengesPage() {
+export default async function WinsChallengesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
   const session = await auth();
+  const params = await searchParams;
+  const viewMode = params.view === "all" ? "all" : "cycle";
+
   const activeQuarter = await prisma.quarter.findFirst({
     where: { isActive: true },
   });
@@ -16,8 +23,19 @@ export default async function WinsChallengesPage() {
     return <div className="py-12 text-center text-gray-500">No hay trimestre activo.</div>;
   }
 
+  // Get the last closed meeting to determine cycle start
+  const lastClosedMeeting = await prisma.l10Meeting.findFirst({
+    where: { quarterId: activeQuarter.id, status: "completed" },
+    orderBy: { date: "desc" },
+  });
+
+  const cycleStart = lastClosedMeeting ? new Date(lastClosedMeeting.updatedAt) : null;
+
   const entries = await prisma.winChallenge.findMany({
-    where: { quarterId: activeQuarter.id },
+    where: {
+      quarterId: activeQuarter.id,
+      ...(viewMode === "cycle" && cycleStart ? { reportDate: { gte: cycleStart } } : {}),
+    },
     include: { user: true },
     orderBy: [{ reportDate: "desc" }, { user: { name: "asc" } }],
   });
@@ -27,11 +45,35 @@ export default async function WinsChallengesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Wins & Challenges</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Q{activeQuarter.quarter} {activeQuarter.year}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Wins & Challenges</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Q{activeQuarter.quarter} {activeQuarter.year}
+            {viewMode === "cycle" && cycleStart && (
+              <span className="ml-2 text-gray-400">
+                · Ciclo desde {new Date(cycleStart).toLocaleDateString("es", { day: "numeric", month: "long" })}
+              </span>
+            )}
+          </p>
+        </div>
+
+        {cycleStart && (
+          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5">
+            <a
+              href="/wins-challenges"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${viewMode === "cycle" ? "bg-mawi-100 text-mawi-800" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              Ciclo actual
+            </a>
+            <a
+              href="/wins-challenges?view=all"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${viewMode === "all" ? "bg-mawi-100 text-mawi-800" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              Todo el trimestre
+            </a>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">
@@ -46,6 +88,12 @@ export default async function WinsChallengesPage() {
           </div>
 
           <AddWinButton quarterId={activeQuarter.id} />
+
+          {wins.length === 0 && (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-400">
+              {viewMode === "cycle" ? "Sin wins en este ciclo todavía" : "Sin wins registrados"}
+            </div>
+          )}
 
           {wins.map((entry) => {
             const isOwner = session?.user?.id === entry.userId;
@@ -91,6 +139,12 @@ export default async function WinsChallengesPage() {
           </div>
 
           <AddChallengeButton quarterId={activeQuarter.id} />
+
+          {challenges.length === 0 && (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-400">
+              {viewMode === "cycle" ? "Sin challenges en este ciclo todavía" : "Sin challenges registrados"}
+            </div>
+          )}
 
           {challenges.map((entry) => {
             const priorityConfig = PRIORITY_CONFIG[entry.priority] || PRIORITY_CONFIG.medio;
