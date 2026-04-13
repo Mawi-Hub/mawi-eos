@@ -84,12 +84,12 @@ export default async function AccountabilityChartPage() {
                   </ul>
                 </div>
 
-                {/* Requiere aprobación */}
+                {/* Escala o consulta antes */}
                 {role.requiresApproval.length > 0 && (
                   <div className="p-5 border-b md:border-b-0 md:border-r border-gray-100">
                     <div className="flex items-center gap-2 mb-3">
                       <AlertTriangle className="h-4 w-4 text-amber-500" />
-                      <h3 className="text-sm font-semibold text-gray-900">Requiere aprobación</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Escala o consulta antes</h3>
                     </div>
                     <ul className="space-y-1.5">
                       {role.requiresApproval.map((item, i) => (

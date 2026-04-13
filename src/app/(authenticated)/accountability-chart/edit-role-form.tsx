@@ -96,7 +96,7 @@ export function EditRoleForm({ role }: { role: AccountabilityRoleData }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Requiere aprobación (una por línea)</label>
+            <label className="block text-sm font-medium text-gray-700">Escala o consulta antes (una por línea)</label>
             <textarea
               value={requiresApproval}
               onChange={(e) => setRequiresApproval(e.target.value)}
