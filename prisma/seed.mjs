@@ -119,11 +119,11 @@ const accountabilityRoles = [
     decidesAlone: [
       "Dirección estratégica del negocio",
       "Acuerdos con partners estratégicos",
-      "Cambios en estructura de pricing",
+      "Cambios en estructura de pricing (se alinea con cofounders)",
       "Decisiones de hiring y estructura del management team",
       "Aprobación de presupuestos departamentales",
       "Decisiones de inversión y asignación de capital",
-      "Ajustes salariales y de compensación",
+      "Ajustes salariales y de compensación (se alinea con cofounders)",
     ],
     requiresApproval: [],
     keyMetrics: [

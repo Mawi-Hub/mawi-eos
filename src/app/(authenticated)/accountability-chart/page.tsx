@@ -72,7 +72,7 @@ export default async function AccountabilityChartPage() {
                 <div className="p-5 border-b border-gray-100">
                   <div className="flex items-center gap-2 mb-3">
                     <CheckCircle className="h-4 w-4 text-green-600" />
-                    <h3 className="text-sm font-semibold text-gray-900">Decide sin escalar</h3>
+                    <h3 className="text-sm font-semibold text-gray-900">{role.requiresApproval.length === 0 ? "Decide" : "Decide sin escalar"}</h3>
                   </div>
                   <ul className="space-y-1.5">
                     {role.decidesAlone.map((item, i) => (
