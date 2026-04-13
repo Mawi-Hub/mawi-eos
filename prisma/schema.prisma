@@ -23,6 +23,7 @@ model User {
   issuesRaised      L10Issue[]      @relation("issuesRaised")
   issuesOwned       L10Issue[]      @relation("issuesOwned")
   commitments       L10Commitment[]
+  accountabilityRole AccountabilityRole?
 
   @@map("users")
 }
@@ -183,6 +184,23 @@ model L10Commitment {
   owner   User       @relation(fields: [ownerId], references: [id])
 
   @@map("l10_commitments")
+}
+
+model AccountabilityRole {
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  title              String
+  responsibilities   String[]
+  decidesAlone       String[] @map("decides_alone")
+  requiresApproval   String[] @map("requires_approval")
+  keyMetrics         String[] @map("key_metrics")
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("accountability_roles")
 }
 
 model ApiSyncCache {

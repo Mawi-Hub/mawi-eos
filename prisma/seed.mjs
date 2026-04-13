@@ -99,5 +99,185 @@ if (parseInt(existingRocks.rows[0].c) === 0) {
   console.log(`${rocks.length} rocks seeded`);
 }
 
+// Accountability Chart
+const accountabilityRoles = [
+  {
+    userId: sergio,
+    title: "CEO",
+    responsibilities: [
+      "Estrategia y dirección de la empresa",
+      "Partnerships y alianzas estratégicas",
+      "Desarrollo del equipo de management: 1:1 semanales, coaching, accountability",
+      "Definición de pricing strategy (estructura de tiers, reglas de descuento)",
+      "Análisis estratégico mensual: cohortes, segmentación, unit economics",
+      "Cultura y estándares de ejecución",
+      "Gestión financiera: control de burn rate, runway, flujo de caja y proyecciones",
+      "Administración de payroll: salarios, renovaciones de contratos, compensación",
+      "Relación con inversionistas, board, y stakeholders financieros",
+      "Presupuesto operativo: aprobación de gastos significativos por departamento",
+    ],
+    decidesAlone: [
+      "Dirección estratégica del negocio",
+      "Acuerdos con partners estratégicos",
+      "Cambios en estructura de pricing",
+      "Decisiones de hiring y estructura del management team",
+      "Aprobación de presupuestos departamentales",
+      "Decisiones de inversión y asignación de capital",
+      "Ajustes salariales y de compensación",
+    ],
+    requiresApproval: [],
+    keyMetrics: [
+      "MRR Growth % (mensual)",
+      "Runway en meses (mensual, target: >18 meses)",
+      "Burn Neto mensual (target: <$5,000)",
+      "Cash collection: DSO y % de clientes al día en pagos",
+      "Pipeline de partnerships: conversaciones activas y pilotos en ejecución",
+    ],
+    sortOrder: 0,
+  },
+  {
+    userId: fede,
+    title: "Head of Revenue — Comercial y Marketing",
+    responsibilities: [
+      "Pipeline comercial completo: desde generación de demanda hasta cierre",
+      "Marketing y demand gen: paid ads, contenido, eventos, canales nuevos",
+      "Ejecución de pricing dentro de la tabla aprobada",
+      "Gestión y desarrollo del equipo de ventas",
+      "Creación de planes y links de pago en Stripe para clientes nuevos",
+      "Handoff documentado a CS una vez confirmado el primer pago",
+    ],
+    decidesAlone: [
+      "Gasto en ads dentro del presupuesto mensual",
+      "Campañas, messaging y tácticas de cierre",
+      "Asignación de leads y territorios entre reps",
+      "Descuentos dentro de la tabla aprobada",
+      "Operaciones en Stripe para clientes nuevos",
+    ],
+    requiresApproval: [
+      "Cambios de pricing fuera de la tabla aprobada",
+      "Descuentos superiores al límite acordado",
+      "Compromisos de producto o features a prospectos",
+      "Contratación o salida de miembros del equipo comercial",
+    ],
+    keyMetrics: [
+      "New MRR (semanal)",
+      "ARPA (mensual)",
+      "MQLs (semanal)",
+      "Show Rate (semanal)",
+      "Close Rate (semanal)",
+      "CAC/LTV (mensual)",
+    ],
+    sortOrder: 1,
+  },
+  {
+    userId: glori,
+    title: "Head of Product",
+    responsibilities: [
+      "Roadmap y priorización de producto",
+      "Specs, scoping y definición de alcance de features",
+      "Decisiones de UX/UI",
+      "Analytics de producto: cómo se usa Mawi, funnels de activación, puntos de fricción",
+      "Coordinación con Engineering en priorización de bugs vs. features",
+    ],
+    decidesAlone: [
+      "Priorización dentro del roadmap trimestral aprobado",
+      "Ajustes de scope en proyectos en curso",
+      "Decisiones de UX/UI",
+      "Priorización de bugs de producto con Engineering",
+    ],
+    requiresApproval: [
+      "Cambios estratégicos de dirección de producto",
+      "Nuevos módulos no contemplados en el roadmap",
+      "Compromisos de features a clientes específicos",
+    ],
+    keyMetrics: [
+      "Shipping Cadence: deadlines cumplidos (semanal)",
+      "Completion rate de pasos críticos de onboarding in-app (mensual)",
+      "Analytics de producto: reporte mensual de uso por módulo",
+    ],
+    sortOrder: 2,
+  },
+  {
+    userId: adrian,
+    title: "Head of Engineering",
+    responsibilities: [
+      "Ejecución y delivery del equipo de desarrollo",
+      "Calidad de código: testing, code review, cobertura",
+      "Infraestructura y servidores",
+      "Capacity planning: garantizar disponibilidad para urgencias sin escalar",
+      "Decisiones de arquitectura técnica",
+    ],
+    decidesAlone: [
+      "Cómo resolver bugs e issues de infraestructura",
+      "Asignación de desarrolladores a tareas y proyectos",
+      "Decisiones de tech stack y herramientas",
+      "Priorización de deuda técnica dentro del sprint",
+    ],
+    requiresApproval: [
+      "Contrataciones de desarrolladores",
+      "Cambios de arquitectura con impacto en roadmap de producto",
+      "Decisiones de infraestructura con impacto significativo en costos",
+    ],
+    keyMetrics: [
+      "Time to Resolution de urgentes (semanal, target: <24h)",
+      "Bugs críticos nuevos (semanal, target: <3)",
+      "% de entregas a tiempo (semanal, target: 90%)",
+    ],
+    sortOrder: 3,
+  },
+  {
+    userId: gaby,
+    title: "Head of Customer Success",
+    responsibilities: [
+      "Onboarding completo: desde handoff de ventas hasta graduación",
+      "Retención y prevención de churn: health monitoring, intervenciones proactivas",
+      "Expansion revenue: identificar y ejecutar upgrades en clientes activos",
+      "Billing post-venta en Stripe: upgrades, downgrades, cancelaciones",
+      "Seguimiento post-graduación y fidelización",
+    ],
+    decidesAlone: [
+      "Estructura y proceso de onboarding",
+      "Intervenciones con clientes en riesgo",
+      "Ofertas de retención dentro del playbook aprobado",
+      "Operaciones en Stripe para clientes existentes",
+      "Priorización del equipo de CS",
+    ],
+    requiresApproval: [
+      "Cancelación de contratos anuales",
+      "Cambios de pricing general",
+      "Excepciones de retención fuera del playbook aprobado",
+    ],
+    keyMetrics: [
+      "Churn Rate — Logo y Revenue (mensual, target: <2%)",
+      "NRR (mensual, target: >90%)",
+      "Onboarding Time (quincenal)",
+      "Activation Rate 30 días (mensual, target: 80%)",
+      "Health Score / NPS (semanal, target: >75)",
+      "Expansion Revenue (mensual)",
+    ],
+    sortOrder: 4,
+  },
+];
+
+for (const role of accountabilityRoles) {
+  const existing = await client.query(
+    "SELECT id FROM accountability_roles WHERE user_id = $1",
+    [role.userId]
+  );
+  if (existing.rows.length > 0) {
+    await client.query(
+      `UPDATE accountability_roles SET title = $1, responsibilities = $2, decides_alone = $3, requires_approval = $4, key_metrics = $5, sort_order = $6, updated_at = NOW() WHERE user_id = $7`,
+      [role.title, role.responsibilities, role.decidesAlone, role.requiresApproval, role.keyMetrics, role.sortOrder, role.userId]
+    );
+  } else {
+    await client.query(
+      `INSERT INTO accountability_roles (id, user_id, title, responsibilities, decides_alone, requires_approval, key_metrics, sort_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+      [randomUUID(), role.userId, role.title, role.responsibilities, role.decidesAlone, role.requiresApproval, role.keyMetrics, role.sortOrder]
+    );
+  }
+}
+console.log(`${accountabilityRoles.length} accountability roles seeded`);
+
 await client.end();
 console.log("Seed completed!");
