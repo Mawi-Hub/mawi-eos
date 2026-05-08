@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { STATUS_CONFIG } from "@/lib/utils";
 import { CloseQuarterButton } from "./close-quarter-button";
+import { ExportQuarterButton } from "./export-quarter-button";
 
 export default async function QuarterlyPage() {
   const session = await auth();
@@ -38,9 +39,12 @@ export default async function QuarterlyPage() {
                   </span>
                 )}
               </div>
-              {isCeo && q.isActive && (
-                <CloseQuarterButton quarterId={q.id} year={q.year} quarter={q.quarter} />
-              )}
+              <div className="flex items-center gap-2">
+                <ExportQuarterButton quarterId={q.id} label={`Q${q.quarter} ${q.year}`} />
+                {isCeo && q.isActive && (
+                  <CloseQuarterButton quarterId={q.id} year={q.year} quarter={q.quarter} />
+                )}
+              </div>
             </div>
 
             <div className="mt-2 text-xs text-gray-400">
