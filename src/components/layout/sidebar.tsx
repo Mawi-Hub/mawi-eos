@@ -12,12 +12,14 @@ import {
   Calendar,
   Users,
   Network,
+  Compass,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/dashboard", label: "CEO Dashboard", icon: LayoutDashboard, ceoOnly: true },
+  { href: "/plan", label: "Plan H2", icon: Compass, ceoOnly: false },
   { href: "/scorecard", label: "Scorecard", icon: Target, ceoOnly: false },
   { href: "/rocks", label: "Rocks", icon: Mountain, ceoOnly: false },
   { href: "/wins-challenges", label: "Wins & Challenges", icon: Trophy, ceoOnly: false },

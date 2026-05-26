@@ -24,6 +24,8 @@ model User {
   issuesOwned       L10Issue[]      @relation("issuesOwned")
   commitments       L10Commitment[]
   accountabilityRole AccountabilityRole?
+  planKpisOwned     PlanKPI[]
+  planProposals     PlanProposal[]
 
   @@map("users")
 }
@@ -35,8 +37,10 @@ model Quarter {
   startDate DateTime @map("start_date")
   endDate   DateTime @map("end_date")
   isActive  Boolean  @default(false) @map("is_active")
+  planId    String?  @map("plan_id")
   createdAt DateTime @default(now()) @map("created_at")
 
+  plan             Plan?            @relation(fields: [planId], references: [id])
   scorecardEntries ScorecardEntry[]
   rocks            Rock[]
   winsAndChallenges WinChallenge[]
@@ -213,4 +217,152 @@ model ApiSyncCache {
 
   @@unique([source, dataKey])
   @@map("api_sync_cache")
+}
+
+enum PlanType {
+  ANNUAL
+  SEMESTRAL
+
+  @@map("plan_type")
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+
+  @@map("plan_status")
+}
+
+enum KPICategory {
+  REVENUE
+  RETENTION
+  GROWTH
+  EFFICIENCY
+
+  @@map("kpi_category")
+}
+
+enum KPIDirection {
+  ABOVE
+  BELOW
+
+  @@map("kpi_direction")
+}
+
+enum KPISourceType {
+  MANUAL
+  CHARTMOGUL
+  HUBSPOT
+  POSTHOG
+
+  @@map("kpi_source_type")
+}
+
+enum ProposalStatus {
+  RECEIVED
+  REVIEWING
+  APPROVED
+  REJECTED
+
+  @@map("proposal_status")
+}
+
+enum MilestoneStatus {
+  PENDING
+  MET
+  MISSED
+
+  @@map("milestone_status")
+}
+
+model Plan {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  type      PlanType
+  startDate DateTime   @map("start_date")
+  endDate   DateTime   @map("end_date")
+  status    PlanStatus @default(DRAFT)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  quarters  Quarter[]
+  kpis      PlanKPI[]
+  proposals PlanProposal[]
+
+  @@map("plans")
+}
+
+model PlanKPI {
+  id           String        @id @default(uuid())
+  planId       String        @map("plan_id")
+  name         String
+  slug         String
+  category     KPICategory
+  baseline     Float
+  target       Float
+  unit         String
+  direction    KPIDirection
+  ownerId      String        @map("owner_id")
+  sourceType   KPISourceType @default(MANUAL) @map("source_type")
+  sourceKey    String?       @map("source_key")
+  displayOrder Int           @default(0) @map("display_order")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  plan    Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  owner   User           @relation(fields: [ownerId], references: [id])
+  entries PlanKPIEntry[]
+
+  @@unique([planId, slug])
+  @@map("plan_kpis")
+}
+
+model PlanKPIEntry {
+  id        String   @id @default(uuid())
+  kpiId     String   @map("kpi_id")
+  period    DateTime
+  projected Float
+  actual    Float?
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  kpi PlanKPI @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@unique([kpiId, period])
+  @@map("plan_kpi_entries")
+}
+
+model PlanProposal {
+  id          String         @id @default(uuid())
+  planId      String         @map("plan_id")
+  ownerId     String         @map("owner_id")
+  area        String
+  status      ProposalStatus @default(RECEIVED)
+  submittedAt DateTime?      @map("submitted_at")
+  content     String
+  resources   Json
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  plan       Plan                @relation(fields: [planId], references: [id], onDelete: Cascade)
+  owner      User                @relation(fields: [ownerId], references: [id])
+  milestones ProposalMilestone[]
+
+  @@map("plan_proposals")
+}
+
+model ProposalMilestone {
+  id          String          @id @default(uuid())
+  proposalId  String          @map("proposal_id")
+  quarter     String
+  description String
+  targetDate  DateTime        @map("target_date")
+  status      MilestoneStatus @default(PENDING)
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  proposal PlanProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@map("proposal_milestones")
 }
