@@ -44,6 +44,8 @@ const KPIS: KPISeed[] = [
     sourceKey: "mrr",
     ownerRole: "ceo",
     entries: [
+      { period: "2026-05-01", projected: 61144 },
+      { period: "2026-06-01", projected: 61144 },
       { period: "2026-07-01", projected: 69972 },
       { period: "2026-08-01", projected: 74130 },
       { period: "2026-09-01", projected: 82640 },
@@ -65,6 +67,8 @@ const KPIS: KPISeed[] = [
     sourceKey: "ndr",
     ownerRole: "ceo",
     entries: [
+      { period: "2026-05-01", projected: 0.9349 },
+      { period: "2026-06-01", projected: 0.9349 },
       { period: "2026-07-01", projected: 0.9421 },
       { period: "2026-08-01", projected: 0.9453 },
       { period: "2026-09-01", projected: 0.9554 },
@@ -86,6 +90,8 @@ const KPIS: KPISeed[] = [
     sourceKey: "ccr",
     ownerRole: "cs",
     entries: [
+      { period: "2026-05-01", projected: 0.0689 },
+      { period: "2026-06-01", projected: 0.0689 },
       { period: "2026-07-01", projected: 0.06325 },
       { period: "2026-08-01", projected: 0.0576 },
       { period: "2026-09-01", projected: 0.05195 },
@@ -107,6 +113,8 @@ const KPIS: KPISeed[] = [
     sourceKey: "new_biz_mrr",
     ownerRole: "sales",
     entries: [
+      { period: "2026-05-01", projected: 6328 },
+      { period: "2026-06-01", projected: 6328 },
       { period: "2026-07-01", projected: 7157 },
       { period: "2026-08-01", projected: 7985 },
       { period: "2026-09-01", projected: 8814 },
@@ -128,6 +136,8 @@ const KPIS: KPISeed[] = [
     sourceKey: "expansion_mrr",
     ownerRole: "cs",
     entries: [
+      { period: "2026-05-01", projected: 234 },
+      { period: "2026-06-01", projected: 234 },
       { period: "2026-07-01", projected: 338 },
       { period: "2026-08-01", projected: 443 },
       { period: "2026-09-01", projected: 547 },
@@ -149,6 +159,8 @@ const KPIS: KPISeed[] = [
     sourceKey: "asp",
     ownerRole: "sales",
     entries: [
+      { period: "2026-05-01", projected: 452 },
+      { period: "2026-06-01", projected: 452 },
       { period: "2026-07-01", projected: 452 },
       { period: "2026-08-01", projected: 452 },
       { period: "2026-09-01", projected: 452 },

@@ -68,13 +68,34 @@ export async function POST(request: Request) {
 
   const today = new Date();
   const currentMonth = firstOfMonthUTC(today);
-  const planStart = firstOfMonthUTC(plan.startDate);
-  const planEnd = firstOfMonthUTC(plan.endDate);
-  const upTo = currentMonth.getTime() < planEnd.getTime() ? currentMonth : planEnd;
 
-  const fetchStart = shiftMonths(planStart, -1);
+  const allEntryPeriods = cmKpis
+    .flatMap((k) => k.entries.map((e) => firstOfMonthUTC(e.period).getTime()))
+    .filter((t) => t <= currentMonth.getTime());
+
+  if (allEntryPeriods.length === 0) {
+    return NextResponse.json({
+      updated: 0,
+      skipped: 0,
+      errors: [],
+      note: "No past entries to sync (plan starts in the future)",
+    });
+  }
+
+  const earliest = new Date(Math.min(...allEntryPeriods));
+  const upTo = currentMonth;
+  const fetchStart = shiftMonths(earliest, -1);
   const fetchEnd = shiftMonths(upTo, 1);
   const fetchEndLast = new Date(fetchEnd.getTime() - 24 * 60 * 60 * 1000);
+
+  if (fetchStart.getTime() >= fetchEndLast.getTime()) {
+    return NextResponse.json({
+      updated: 0,
+      skipped: 0,
+      errors: [],
+      note: "Fetch range collapsed; nothing to sync yet",
+    });
+  }
 
   let mrr: MRRBreakdown[] = [];
   let ndrByMonth = new Map<number, number>();
