@@ -71,3 +71,38 @@ export function parseMRREntries(data: { entries: Array<Record<string, number | s
     mrrReactivation: (e["mrr-reactivation"] as number) / 100,
   }));
 }
+
+export function parseARPAEntries(data: { entries: Array<Record<string, number | string>> }) {
+  return data.entries.map((e) => ({
+    date: e.date as string,
+    arpa: (e.arpa as number) / 100,
+  }));
+}
+
+export function parseCustomerChurnEntries(
+  data: { entries: Array<Record<string, number | string>> }
+) {
+  return data.entries.map((e) => ({
+    date: e.date as string,
+    customerChurnRate: (e["customer-churn-rate"] as number) / 100,
+  }));
+}
+
+export function parseCustomerCountEntries(
+  data: { entries: Array<Record<string, number | string>> }
+) {
+  return data.entries.map((e) => ({
+    date: e.date as string,
+    customerCount: e["customer-count"] as number,
+  }));
+}
+
+export function computeMonthlyNDR(entries: MRRBreakdown[]): { date: string; ndr: number | null }[] {
+  return entries.map((e, i) => {
+    if (i === 0) return { date: e.date, ndr: null };
+    const prev = entries[i - 1];
+    if (prev.mrr === 0) return { date: e.date, ndr: null };
+    const ndr = (prev.mrr + e.mrrExpansion - e.mrrChurn - e.mrrContraction) / prev.mrr;
+    return { date: e.date, ndr };
+  });
+}

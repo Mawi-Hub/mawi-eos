@@ -65,6 +65,7 @@ export function PlanRevenueTree({ kpis }: { kpis: KPI[] }) {
   const ccr = bySlug(kpis, "ccr");
   const newBiz = bySlug(kpis, "new_biz_mrr");
   const exp = bySlug(kpis, "expansion_mrr");
+  const asp = bySlug(kpis, "asp");
 
   function lastFor(kpi: KPI | undefined) {
     if (!kpi) return { current: null as number | null, projected: null as number | null };
@@ -85,6 +86,7 @@ export function PlanRevenueTree({ kpis }: { kpis: KPI[] }) {
   const ccrVals = lastFor(ccr);
   const newBizVals = lastFor(newBiz);
   const expVals = lastFor(exp);
+  const aspVals = lastFor(asp);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
@@ -156,6 +158,17 @@ export function PlanRevenueTree({ kpis }: { kpis: KPI[] }) {
               projected={newBizVals.projected}
               unit={newBiz.unit}
               direction={newBiz.direction}
+            />
+          )}
+          {asp && (
+            <Node
+              label="ASP"
+              sublabel="Defender ticket promedio"
+              target={asp.target}
+              current={aspVals.current}
+              projected={aspVals.projected}
+              unit={asp.unit}
+              direction={asp.direction}
             />
           )}
         </div>

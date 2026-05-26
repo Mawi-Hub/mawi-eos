@@ -136,6 +136,27 @@ const KPIS: KPISeed[] = [
       { period: "2026-12-01", projected: 860 },
     ],
   },
+  {
+    name: "ASP",
+    slug: "asp",
+    category: "GROWTH",
+    baseline: 452,
+    target: 452,
+    unit: "USD",
+    direction: "ABOVE",
+    displayOrder: 6,
+    sourceType: "CHARTMOGUL",
+    sourceKey: "asp",
+    ownerRole: "sales",
+    entries: [
+      { period: "2026-07-01", projected: 452 },
+      { period: "2026-08-01", projected: 452 },
+      { period: "2026-09-01", projected: 452 },
+      { period: "2026-10-01", projected: 452 },
+      { period: "2026-11-01", projected: 452 },
+      { period: "2026-12-01", projected: 452 },
+    ],
+  },
 ];
 
 export async function seedPlanH2() {

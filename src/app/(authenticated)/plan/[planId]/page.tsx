@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
 import { PlanNorthStars } from "@/components/plan/PlanNorthStars";
 import { PlanRevenueTree } from "@/components/plan/PlanRevenueTree";
 import { PlanKPICard } from "@/components/plan/PlanKPICard";
 import { PlanProposalCard } from "@/components/plan/PlanProposalCard";
 import type { KPIDirection } from "@/lib/plan/calculations";
+import { PlanSyncButton } from "./sync-button";
 
 export default async function PlanOverviewPage({
   params,
@@ -12,6 +14,7 @@ export default async function PlanOverviewPage({
   params: Promise<{ planId: string }>;
 }) {
   const { planId } = await params;
+  const session = await auth();
 
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
@@ -49,6 +52,12 @@ export default async function PlanOverviewPage({
 
   return (
     <div className="space-y-8">
+      {session?.user.role === "ceo" && (
+        <section>
+          <PlanSyncButton planId={planId} />
+        </section>
+      )}
+
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
           North Stars
