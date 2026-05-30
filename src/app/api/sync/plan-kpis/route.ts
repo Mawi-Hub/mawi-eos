@@ -3,12 +3,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
   getMRRMetrics,
-  getARPA,
   getCustomerChurnRate,
+  getMRRChurnRate,
+  getASPMetric,
   parseMRREntries,
-  parseARPAEntries,
   parseCustomerChurnEntries,
-  computeMonthlyNDR,
+  parseMRRChurnRateEntries,
+  parseASPEntries,
   type MRRBreakdown,
 } from "@/lib/integrations/chartmogul";
 
@@ -98,28 +99,34 @@ export async function POST(request: Request) {
   }
 
   let mrr: MRRBreakdown[] = [];
-  let ndrByMonth = new Map<number, number>();
-  let arpaByMonth = new Map<number, number>();
-  let churnByMonth = new Map<number, number>();
+  const ndrByMonth = new Map<number, number>();
+  const aspByMonth = new Map<number, number>();
+  const churnByMonth = new Map<number, number>();
   const errors: string[] = [];
 
   try {
     const raw = await getMRRMetrics(ymd(fetchStart), ymd(fetchEndLast));
     mrr = parseMRREntries(raw);
-    for (const r of computeMonthlyNDR(mrr)) {
-      if (r.ndr !== null) ndrByMonth.set(periodFromCMDate(r.date).getTime(), r.ndr);
-    }
   } catch (e) {
     errors.push(`mrr: ${(e as Error).message}`);
   }
 
   try {
-    const raw = await getARPA(ymd(fetchStart), ymd(fetchEndLast));
-    for (const r of parseARPAEntries(raw)) {
-      arpaByMonth.set(periodFromCMDate(r.date).getTime(), r.arpa);
+    const raw = await getMRRChurnRate(ymd(fetchStart), ymd(fetchEndLast));
+    for (const r of parseMRRChurnRateEntries(raw)) {
+      ndrByMonth.set(periodFromCMDate(r.date).getTime(), 1 - r.mrrChurnRate);
     }
   } catch (e) {
-    errors.push(`arpa: ${(e as Error).message}`);
+    errors.push(`ndr: ${(e as Error).message}`);
+  }
+
+  try {
+    const raw = await getASPMetric(ymd(fetchStart), ymd(fetchEndLast));
+    for (const r of parseASPEntries(raw)) {
+      aspByMonth.set(periodFromCMDate(r.date).getTime(), r.asp);
+    }
+  } catch (e) {
+    errors.push(`asp: ${(e as Error).message}`);
   }
 
   try {
@@ -149,7 +156,7 @@ export async function POST(request: Request) {
       case "ccr":
         return churnByMonth.get(periodMs) ?? null;
       case "asp":
-        return arpaByMonth.get(periodMs) ?? null;
+        return aspByMonth.get(periodMs) ?? null;
       default:
         return null;
     }

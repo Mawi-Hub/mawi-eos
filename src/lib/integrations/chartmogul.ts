@@ -50,6 +50,22 @@ export async function getCustomerCount(startDate: string, endDate: string) {
   });
 }
 
+export async function getMRRChurnRate(startDate: string, endDate: string) {
+  return fetchCM("/v1/metrics/mrr-churn-rate", {
+    "start-date": startDate,
+    "end-date": endDate,
+    interval: "month",
+  });
+}
+
+export async function getASPMetric(startDate: string, endDate: string) {
+  return fetchCM("/v1/metrics/asp", {
+    "start-date": startDate,
+    "end-date": endDate,
+    interval: "month",
+  });
+}
+
 export interface MRRBreakdown {
   date: string;
   mrr: number;
@@ -94,6 +110,24 @@ export function parseCustomerCountEntries(
   return data.entries.map((e) => ({
     date: e.date as string,
     customerCount: e["customer-count"] as number,
+  }));
+}
+
+export function parseMRRChurnRateEntries(
+  data: { entries: Array<Record<string, number | string>> }
+) {
+  return data.entries.map((e) => ({
+    date: e.date as string,
+    mrrChurnRate: (e["mrr-churn-rate"] as number) / 100,
+  }));
+}
+
+export function parseASPEntries(
+  data: { entries: Array<Record<string, number | string>> }
+) {
+  return data.entries.map((e) => ({
+    date: e.date as string,
+    asp: (e.asp as number) / 100,
   }));
 }
 
