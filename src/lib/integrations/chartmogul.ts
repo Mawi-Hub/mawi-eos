@@ -102,7 +102,11 @@ export function computeMonthlyNDR(entries: MRRBreakdown[]): { date: string; ndr:
     if (i === 0) return { date: e.date, ndr: null };
     const prev = entries[i - 1];
     if (prev.mrr === 0) return { date: e.date, ndr: null };
-    const ndr = (prev.mrr + e.mrrExpansion - e.mrrChurn - e.mrrContraction) / prev.mrr;
+    const expansion = Math.abs(e.mrrExpansion);
+    const reactivation = Math.abs(e.mrrReactivation);
+    const churn = Math.abs(e.mrrChurn);
+    const contraction = Math.abs(e.mrrContraction);
+    const ndr = (prev.mrr + expansion + reactivation - churn - contraction) / prev.mrr;
     return { date: e.date, ndr };
   });
 }
