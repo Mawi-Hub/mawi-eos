@@ -19,11 +19,12 @@ type KPI = {
   direction: KPIDirection;
   baseline: number;
   target: number;
+  isPrincipal?: boolean;
   owner: { name: string };
   entries: Entry[];
 };
 
-const NORTH_STAR_SLUGS = ["mrr", "ndr", "ccr"];
+const NORTH_STAR_SLUGS = ["ndr", "mrr", "ccr"];
 
 export function PlanNorthStars({ kpis }: { kpis: KPI[] }) {
   const northStars = NORTH_STAR_SLUGS.map((slug) => kpis.find((k) => k.slug === slug)).filter(
@@ -49,12 +50,23 @@ export function PlanNorthStars({ kpis }: { kpis: KPI[] }) {
         return (
           <div
             key={kpi.id}
-            className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+            className={
+              kpi.isPrincipal
+                ? "rounded-xl border-2 border-mawi-400 bg-gradient-to-br from-white to-mawi-50 p-5 shadow-md ring-1 ring-mawi-200"
+                : "rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+            }
           >
             <div className="mb-3 flex items-start justify-between">
               <div>
-                <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                  {kpi.name}
+                <div className="flex items-center gap-1.5">
+                  {kpi.isPrincipal && (
+                    <span className="text-mawi-600" aria-hidden>
+                      ★
+                    </span>
+                  )}
+                  <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    {kpi.name}
+                  </div>
                 </div>
                 <div className="text-xs text-gray-400">{kpi.owner.name}</div>
               </div>

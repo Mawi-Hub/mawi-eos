@@ -122,7 +122,7 @@ export default async function PlanOverviewPage({
       </section>
 
       <section>
-        <PlanRevenueTree kpis={northStarKpis} />
+        <PlanRevenueTree kpis={kpisForUI} />
       </section>
 
       <section className="space-y-6">
