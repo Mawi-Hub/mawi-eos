@@ -100,6 +100,20 @@ const SCORECARD_RENAMES = [
 const SCORECARD_METRICS: ScorecardSeed[] = [
   // COMERCIAL — Fede
   {
+    name: "Fit Score del cliente",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "≥ 80%",
+    targetNumeric: 80,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "%",
+    calculation:
+      "% de clientes nuevos con Fit Score ≥80. Buen fit = menor churn temprano.",
+    dataSource: "manual",
+    sortOrder: 99,
+  },
+  {
     name: "Nuevos clientes / mes",
     category: "sales_health",
     ownerRole: "sales",
@@ -381,6 +395,22 @@ const KPIS: KPISeed[] = [
   },
 
   // COMERCIAL — Fede
+  {
+    name: "Fit Score del cliente",
+    slug: "fit_score",
+    category: "GROWTH",
+    area: "COMERCIAL",
+    baseline: 0.6,
+    target: 0.8,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 9,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Fit Score del cliente",
+    ownerRole: "sales",
+    entries: linearEntries(0.6, 0.8),
+  },
   {
     name: "Nuevos clientes / mes",
     slug: "nuevos_clientes_mes",
