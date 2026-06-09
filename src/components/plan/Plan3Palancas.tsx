@@ -78,7 +78,7 @@ export function Plan3Palancas({
     day: "numeric",
     month: "long",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: "America/Costa_Rica",
   });
 
   return (

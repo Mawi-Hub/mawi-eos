@@ -59,8 +59,9 @@ const PLAN: {
 } = {
   name: "H2 2026",
   type: "SEMESTRAL",
-  startDate: "2026-07-01",
-  endDate: "2026-12-31",
+  // Anchored to Costa Rica time (UTC-6): start of Jul 1 CR, end of Dec 31 CR.
+  startDate: "2026-07-01T00:00:00-06:00",
+  endDate: "2026-12-31T23:59:59-06:00",
   status: "ACTIVE",
 };
 

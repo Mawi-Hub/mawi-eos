@@ -14,16 +14,39 @@ export default async function PlanLayout({
   if (!plan) notFound();
 
   const now = new Date();
+  // Compute months difference in Costa Rica time, so a deadline like
+  // "Dec 31 23:59 CR" still reads as December 2026 (not January 2027 UTC).
+  const crParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Costa_Rica",
+    year: "numeric",
+    month: "numeric",
+  });
+  function ym(d: Date) {
+    const p = crParts.formatToParts(d);
+    return {
+      year: Number(p.find((x) => x.type === "year")?.value),
+      month: Number(p.find((x) => x.type === "month")?.value) - 1,
+    };
+  }
+  const nowYM = ym(now);
+  const endYM = ym(plan.endDate);
   const monthsLeft = Math.max(
     0,
-    (plan.endDate.getUTCFullYear() - now.getUTCFullYear()) * 12 +
-      (plan.endDate.getUTCMonth() - now.getUTCMonth())
+    (endYM.year - nowYM.year) * 12 + (endYM.month - nowYM.month)
   );
   const monthsLabel =
     monthsLeft === 0 ? "último mes" : `${monthsLeft} ${monthsLeft === 1 ? "mes" : "meses"} para la meta`;
 
-  const startFmt = plan.startDate.toLocaleDateString("es", { month: "short", year: "numeric" });
-  const endFmt = plan.endDate.toLocaleDateString("es", { month: "short", year: "numeric" });
+  const startFmt = plan.startDate.toLocaleDateString("es", {
+    month: "short",
+    year: "numeric",
+    timeZone: "America/Costa_Rica",
+  });
+  const endFmt = plan.endDate.toLocaleDateString("es", {
+    month: "short",
+    year: "numeric",
+    timeZone: "America/Costa_Rica",
+  });
 
   return (
     <div className="space-y-6">
