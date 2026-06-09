@@ -216,7 +216,7 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     frequency: "weekly",
     unit: "count",
     calculation: "Conteo de nuevos clientes cerrados en el mes.",
-    dataSource: "hubspot",
+    dataSource: "manual",
     sortOrder: 100,
   },
   {
@@ -229,7 +229,7 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     frequency: "monthly",
     unit: "%",
     calculation: "Cierres ÷ demos realizadas.",
-    dataSource: "hubspot",
+    dataSource: "manual",
     sortOrder: 101,
   },
   {
@@ -255,7 +255,7 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     frequency: "weekly",
     unit: "count",
     calculation: "Deals cerrados por vendedor en el mes.",
-    dataSource: "hubspot",
+    dataSource: "manual",
     sortOrder: 103,
   },
 
@@ -270,7 +270,7 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     frequency: "monthly",
     unit: "%",
     calculation: "% de cuentas en onboard que llegan a activación.",
-    dataSource: "hubspot",
+    dataSource: "manual",
     sortOrder: 110,
   },
   {
@@ -391,7 +391,7 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     frequency: "monthly",
     unit: "%",
     calculation: "% clientes nuevos con ≥10 semanas activas en sus primeros 90 días.",
-    dataSource: "posthog",
+    dataSource: "manual",
     sortOrder: 120,
   },
   {
@@ -404,7 +404,7 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     frequency: "monthly",
     unit: "%",
     calculation: "% clientes nuevos con score ≥2/3 al día 30.",
-    dataSource: "posthog",
+    dataSource: "manual",
     sortOrder: 121,
   },
 ];
@@ -1122,6 +1122,13 @@ export async function seedPlanH2() {
     const user = await prisma.user.findFirst({ where: { role } });
     if (user) ownersByRole.set(role, user.id);
   }
+
+  // While HubSpot/PostHog sync routes don't write to ScorecardEntry yet,
+  // treat those metrics as manual so owners can update them by hand.
+  await prisma.scorecardMetric.updateMany({
+    where: { dataSource: { in: ["hubspot", "posthog"] } },
+    data: { dataSource: "manual" },
+  });
 
   // Idempotent renames before upserting scorecard metrics.
   for (const rename of SCORECARD_RENAMES) {
