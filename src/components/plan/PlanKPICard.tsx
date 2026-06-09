@@ -21,6 +21,7 @@ export function PlanKPICard({
   ownerName,
   entries,
   linkable = true,
+  subtitle,
 }: {
   planId: string;
   kpiId: string;
@@ -31,6 +32,7 @@ export function PlanKPICard({
   ownerName: string;
   entries: Entry[];
   linkable?: boolean;
+  subtitle?: string;
 }) {
   const normalized = entries.map((e) => ({
     period: new Date(e.period),
@@ -53,7 +55,7 @@ export function PlanKPICard({
       <div className="mb-2 flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">{name}</h3>
-          <p className="text-xs text-gray-500">{ownerName}</p>
+          <p className="text-xs text-gray-500">{subtitle ?? ownerName}</p>
         </div>
         <PlanSemaforo status={status} />
       </div>

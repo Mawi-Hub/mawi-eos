@@ -140,7 +140,7 @@ export default async function PublicPlanPage({
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
             North Stars
           </h2>
-          <PlanNorthStars kpis={northStarKpis} />
+          <PlanNorthStars kpis={northStarKpis} subtitleOverride="Compañía" />
         </section>
 
         <section>
@@ -161,6 +161,7 @@ export default async function PublicPlanPage({
               actions={actionsByArea[area]}
               risks={risksByArea[area]}
               linkableKpis={false}
+              showAreaAsSubtitle
             />
           ))}
         </section>

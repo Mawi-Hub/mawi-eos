@@ -26,7 +26,13 @@ type KPI = {
 
 const NORTH_STAR_SLUGS = ["ndr", "mrr", "ccr"];
 
-export function PlanNorthStars({ kpis }: { kpis: KPI[] }) {
+export function PlanNorthStars({
+  kpis,
+  subtitleOverride,
+}: {
+  kpis: KPI[];
+  subtitleOverride?: string;
+}) {
   const northStars = NORTH_STAR_SLUGS.map((slug) => kpis.find((k) => k.slug === slug)).filter(
     (k): k is KPI => k !== undefined
   );
@@ -68,7 +74,7 @@ export function PlanNorthStars({ kpis }: { kpis: KPI[] }) {
                     {kpi.name}
                   </div>
                 </div>
-                <div className="text-xs text-gray-400">{kpi.owner.name}</div>
+                <div className="text-xs text-gray-400">{subtitleOverride ?? kpi.owner.name}</div>
               </div>
               <PlanSemaforo status={status} />
             </div>
