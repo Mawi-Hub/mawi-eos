@@ -14,10 +14,13 @@ export default async function PlanLayout({
   if (!plan) notFound();
 
   const now = new Date();
-  const daysLeft = Math.max(
+  const monthsLeft = Math.max(
     0,
-    Math.ceil((plan.endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    (plan.endDate.getUTCFullYear() - now.getUTCFullYear()) * 12 +
+      (plan.endDate.getUTCMonth() - now.getUTCMonth())
   );
+  const monthsLabel =
+    monthsLeft === 0 ? "último mes" : `${monthsLeft} ${monthsLeft === 1 ? "mes" : "meses"} para la meta`;
 
   const startFmt = plan.startDate.toLocaleDateString("es", { month: "short", year: "numeric" });
   const endFmt = plan.endDate.toLocaleDateString("es", { month: "short", year: "numeric" });
@@ -28,7 +31,7 @@ export default async function PlanLayout({
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{plan.name}</h1>
           <p className="mt-1 text-sm text-gray-500">
-            {startFmt} → {endFmt} · {daysLeft} días restantes ·{" "}
+            {startFmt} → {endFmt} · {monthsLabel} ·{" "}
             <span className="font-medium uppercase text-mawi-700">{plan.status}</span>
           </p>
         </div>

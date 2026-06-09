@@ -20,6 +20,7 @@ export function PlanKPICard({
   target,
   ownerName,
   entries,
+  linkable = true,
 }: {
   planId: string;
   kpiId: string;
@@ -29,6 +30,7 @@ export function PlanKPICard({
   target: number;
   ownerName: string;
   entries: Entry[];
+  linkable?: boolean;
 }) {
   const normalized = entries.map((e) => ({
     period: new Date(e.period),
@@ -42,11 +44,12 @@ export function PlanKPICard({
     ? getKPIStatus(currentMonth.actual, currentMonth.projected, direction)
     : "pending";
 
-  return (
-    <Link
-      href={`/plan/${planId}/kpis/${kpiId}`}
-      className="block rounded-xl border border-gray-200 bg-white p-5 transition hover:border-mawi-300 hover:shadow-sm"
-    >
+  const baseClass = "block rounded-xl border border-gray-200 bg-white p-5";
+  const hoverClass = linkable ? " transition hover:border-mawi-300 hover:shadow-sm" : "";
+  const className = baseClass + hoverClass;
+
+  const inner = (
+    <>
       <div className="mb-2 flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">{name}</h3>
@@ -69,6 +72,16 @@ export function PlanKPICard({
         direction={direction}
         height={140}
       />
+    </>
+  );
+
+  if (!linkable) {
+    return <div className={className}>{inner}</div>;
+  }
+
+  return (
+    <Link href={`/plan/${planId}/kpis/${kpiId}`} className={className}>
+      {inner}
     </Link>
   );
 }

@@ -82,6 +82,7 @@ export function PlanAreaSection({
   kpis,
   actions,
   risks,
+  linkableKpis = true,
 }: {
   planId: string;
   area: Area;
@@ -89,6 +90,7 @@ export function PlanAreaSection({
   kpis: KPI[];
   actions: Action[];
   risks: Risk[];
+  linkableKpis?: boolean;
 }) {
   const meta = AREA_META[area];
   const principal = kpis.find((k) => k.isPrincipal);
@@ -186,6 +188,7 @@ export function PlanAreaSection({
                 target={kpi.target}
                 ownerName={kpi.owner.name}
                 entries={kpi.entries}
+                linkable={linkableKpis}
               />
             ))}
           </div>

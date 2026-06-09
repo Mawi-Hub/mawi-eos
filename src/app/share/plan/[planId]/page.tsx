@@ -1,25 +1,26 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { auth } from "@/lib/auth";
 import { Plan3Palancas } from "@/components/plan/Plan3Palancas";
 import { PlanNorthStars } from "@/components/plan/PlanNorthStars";
 import { PlanRevenueTree } from "@/components/plan/PlanRevenueTree";
 import { PlanAreaSection } from "@/components/plan/PlanAreaSection";
 import type { KPIDirection } from "@/lib/plan/calculations";
 import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
-import { PlanSyncButton } from "./sync-button";
-import { PlanShareButton } from "./share-button";
 
 const AREAS = ["COMERCIAL", "CUSTOMER_SUCCESS", "PRODUCTO", "INGENIERIA"] as const;
 type AreaKey = (typeof AREAS)[number];
 
-export default async function PlanOverviewPage({
+export const metadata = {
+  title: "Plan H2 — Mawi",
+  description: "Plan de crecimiento Segundo Semestre 2026",
+};
+
+export default async function PublicPlanPage({
   params,
 }: {
   params: Promise<{ planId: string }>;
 }) {
   const { planId } = await params;
-  const session = await auth();
 
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
@@ -105,50 +106,77 @@ export default async function PlanOverviewPage({
     return anyKpi?.owner.name ?? "—";
   }
 
+  const now = new Date();
+  const monthsLeft = Math.max(
+    0,
+    (plan.endDate.getUTCFullYear() - now.getUTCFullYear()) * 12 +
+      (plan.endDate.getUTCMonth() - now.getUTCMonth())
+  );
+  const monthsLabel =
+    monthsLeft === 0 ? "último mes" : `${monthsLeft} ${monthsLeft === 1 ? "mes" : "meses"} para la meta`;
+  const startFmt = plan.startDate.toLocaleDateString("es", { month: "short", year: "numeric" });
+  const endFmt = plan.endDate.toLocaleDateString("es", { month: "short", year: "numeric" });
+
   return (
-    <div className="space-y-8">
-      <section className="flex flex-wrap items-center gap-3">
-        {session?.user.role === "ceo" && <PlanSyncButton planId={planId} />}
-        <PlanShareButton planId={planId} />
-      </section>
+    <div className="min-h-screen bg-gray-50 px-4 py-8 md:px-8">
+      <div className="mx-auto max-w-6xl space-y-8">
+        <header>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-mawi-700">
+                Mawi · Vista compartida
+              </p>
+              <h1 className="mt-1 text-2xl font-bold text-gray-900">{plan.name}</h1>
+              <p className="mt-1 text-sm text-gray-500">
+                {startFmt} → {endFmt} · {monthsLabel}
+              </p>
+            </div>
+          </div>
+        </header>
 
-      <Plan3Palancas kpis={northStarKpis} />
+        <Plan3Palancas kpis={northStarKpis} />
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-          North Stars
-        </h2>
-        <PlanNorthStars kpis={northStarKpis} />
-      </section>
+        <section>
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            North Stars
+          </h2>
+          <PlanNorthStars kpis={northStarKpis} />
+        </section>
 
-      <section>
-        <PlanRevenueTree kpis={kpisForUI} />
-      </section>
+        <section>
+          <PlanRevenueTree kpis={kpisForUI} />
+        </section>
 
-      <section className="space-y-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-          Cuatro áreas, una sola misión
-        </h2>
-        {AREAS.map((area) => (
-          <PlanAreaSection
-            key={area}
-            planId={planId}
-            area={area}
-            ownerName={ownerNameForArea(area)}
-            kpis={byArea[area]}
-            actions={actionsByArea[area]}
-            risks={risksByArea[area]}
-          />
-        ))}
-      </section>
+        <section className="space-y-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Cuatro áreas, una sola misión
+          </h2>
+          {AREAS.map((area) => (
+            <PlanAreaSection
+              key={area}
+              planId={planId}
+              area={area}
+              ownerName={ownerNameForArea(area)}
+              kpis={byArea[area]}
+              actions={actionsByArea[area]}
+              risks={risksByArea[area]}
+              linkableKpis={false}
+            />
+          ))}
+        </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-gradient-to-r from-mawi-50 to-white p-6 text-center">
-        <p className="text-sm font-medium text-mawi-900">
-          Si el NDR sube, todos ganamos.
-          <br />
-          Si el NDR baja, todos somos responsables.
-        </p>
-      </section>
+        <section className="rounded-2xl border border-gray-200 bg-gradient-to-r from-mawi-50 to-white p-6 text-center">
+          <p className="text-sm font-medium text-mawi-900">
+            Si el NDR sube, todos ganamos.
+            <br />
+            Si el NDR baja, todos somos responsables.
+          </p>
+        </section>
+
+        <footer className="pt-4 text-center text-xs text-gray-400">
+          Mawi EOS · Vista compartida read-only
+        </footer>
+      </div>
     </div>
   );
 }
