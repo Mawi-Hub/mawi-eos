@@ -22,6 +22,30 @@ function normalizeSource(value: string | null): SourceKey {
   return "manual";
 }
 
+function formatActual(value: number | null | undefined, unit: string | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const u = (unit ?? "").trim();
+  if (u === "$") {
+    return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  }
+  if (u === "%") {
+    return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+  }
+  if (u === "ratio") {
+    return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  }
+  if (u === "days") {
+    return `${value.toLocaleString("en-US", { maximumFractionDigits: 0 })} d`;
+  }
+  if (u === "hours") {
+    return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} h`;
+  }
+  if (u === "months") {
+    return `${value.toLocaleString("en-US", { maximumFractionDigits: 0 })} m`;
+  }
+  return value.toLocaleString("en-US", { maximumFractionDigits: 1 });
+}
+
 export default async function ScorecardPage() {
   const session = await auth();
   const metrics = await prisma.scorecardMetric.findMany({
@@ -108,7 +132,8 @@ export default async function ScorecardPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{metric.owner.name}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {lastEntry?.actualDisplay || lastEntry?.actualValue?.toString() || "—"}
+                        {lastEntry?.actualDisplay ||
+                          formatActual(lastEntry?.actualValue, metric.unit)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{metric.targetValue || "—"}</td>
                       <td className="px-4 py-3">
