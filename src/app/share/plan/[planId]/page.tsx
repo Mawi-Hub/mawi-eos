@@ -106,34 +106,9 @@ export default async function PublicPlanPage({
     return anyKpi?.owner.name ?? "—";
   }
 
-  const now = new Date();
-  const monthsLeft = Math.max(
-    0,
-    (plan.endDate.getUTCFullYear() - now.getUTCFullYear()) * 12 +
-      (plan.endDate.getUTCMonth() - now.getUTCMonth())
-  );
-  const monthsLabel =
-    monthsLeft === 0 ? "último mes" : `${monthsLeft} ${monthsLeft === 1 ? "mes" : "meses"} para la meta`;
-  const startFmt = plan.startDate.toLocaleDateString("es", { month: "short", year: "numeric" });
-  const endFmt = plan.endDate.toLocaleDateString("es", { month: "short", year: "numeric" });
-
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-8 md:px-8">
       <div className="mx-auto max-w-6xl space-y-8">
-        <header>
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-mawi-700">
-                Mawi · Vista compartida
-              </p>
-              <h1 className="mt-1 text-2xl font-bold text-gray-900">{plan.name}</h1>
-              <p className="mt-1 text-sm text-gray-500">
-                {startFmt} → {endFmt} · {monthsLabel}
-              </p>
-            </div>
-          </div>
-        </header>
-
         <Plan3Palancas kpis={northStarKpis} endDate={plan.endDate} />
 
         <section>
