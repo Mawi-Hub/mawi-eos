@@ -134,7 +134,7 @@ export default async function PublicPlanPage({
           </div>
         </header>
 
-        <Plan3Palancas kpis={northStarKpis} />
+        <Plan3Palancas kpis={northStarKpis} endDate={plan.endDate} />
 
         <section>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">

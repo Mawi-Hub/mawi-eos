@@ -112,7 +112,7 @@ export default async function PlanOverviewPage({
         <PlanShareButton planId={planId} />
       </section>
 
-      <Plan3Palancas kpis={northStarKpis} />
+      <Plan3Palancas kpis={northStarKpis} endDate={plan.endDate} />
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
