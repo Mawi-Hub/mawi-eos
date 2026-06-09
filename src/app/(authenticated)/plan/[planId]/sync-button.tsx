@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 export function PlanSyncButton({ planId }: { planId: string }) {
   const [loading, setLoading] = useState(false);
-  const [overwrite, setOverwrite] = useState(false);
   const [result, setResult] = useState<{
     updated: number;
     skipped: number;
@@ -19,7 +18,7 @@ export function PlanSyncButton({ planId }: { planId: string }) {
     const res = await fetch("/api/sync/plan-kpis", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planId, overwrite }),
+      body: JSON.stringify({ planId }),
     });
     const data = await res.json();
     setResult(data);
@@ -36,15 +35,6 @@ export function PlanSyncButton({ planId }: { planId: string }) {
       >
         {loading ? "Sincronizando…" : "Sync ChartMogul"}
       </button>
-      <label className="flex items-center gap-1.5 text-xs text-gray-600">
-        <input
-          type="checkbox"
-          checked={overwrite}
-          onChange={(e) => setOverwrite(e.target.checked)}
-          className="h-3.5 w-3.5"
-        />
-        Sobrescribir manuales
-      </label>
       {result && (
         <span className="text-xs text-gray-500">
           {result.updated} actualizados · {result.skipped} omitidos

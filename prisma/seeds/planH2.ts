@@ -95,9 +95,102 @@ function flatEntries(value: number): { period: string; projected: number }[] {
 const SCORECARD_RENAMES = [
   { from: "Time to Active", to: "Days to Activate" },
   { from: "Time to Adopt", to: "Days to Adopt" },
+  { from: "NRR", to: "NDR" },
+];
+
+// Maps Plan KPI slug → Scorecard metric name for ChartMogul-sourced metrics.
+// The sync route uses this to write ChartMogul fetches straight to Scorecard.
+// Exported for /api/sync/plan-kpis.
+export const CHARTMOGUL_SCORECARD_METRICS: { slug: string; name: string; isPct: boolean }[] = [
+  { slug: "mrr", name: "MRR", isPct: false },
+  { slug: "ndr", name: "NDR", isPct: true },
+  { slug: "ccr", name: "CCR", isPct: true },
+  { slug: "new_biz_mrr", name: "New Biz MRR", isPct: false },
+  { slug: "expansion_mrr", name: "Expansion MRR", isPct: false },
+  { slug: "asp", name: "ASP (Ticket promedio)", isPct: false },
 ];
 
 const SCORECARD_METRICS: ScorecardSeed[] = [
+  // NORTH STAR / Árbol del MRR — sincronizados desde ChartMogul
+  {
+    name: "MRR",
+    category: "revenue_health",
+    ownerRole: "ceo",
+    targetValue: "$121K",
+    targetNumeric: 121000,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "$",
+    calculation: "Monthly Recurring Revenue (ChartMogul).",
+    dataSource: "chartmogul",
+    sortOrder: 1,
+  },
+  {
+    name: "NDR",
+    category: "revenue_health",
+    ownerRole: "ceo",
+    targetValue: "≥ 98.5%",
+    targetNumeric: 98.5,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "%",
+    calculation: "Net Dollar Retention = 1 − (MRR churn − expansion). ChartMogul.",
+    dataSource: "chartmogul",
+    sortOrder: 2,
+  },
+  {
+    name: "CCR",
+    category: "revenue_health",
+    ownerRole: "ceo",
+    targetValue: "≤ 2.7%",
+    targetNumeric: 2.7,
+    targetDirection: "below",
+    frequency: "monthly",
+    unit: "%",
+    calculation: "Customer Churn Rate (logo) — ChartMogul.",
+    dataSource: "chartmogul",
+    sortOrder: 3,
+  },
+  {
+    name: "New Biz MRR",
+    category: "revenue_health",
+    ownerRole: "sales",
+    targetValue: "$13,560",
+    targetNumeric: 13560,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "$",
+    calculation: "MRR de clientes nuevos en el mes (ChartMogul).",
+    dataSource: "chartmogul",
+    sortOrder: 4,
+  },
+  {
+    name: "Expansion MRR",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "$850",
+    targetNumeric: 850,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "$",
+    calculation: "MRR adicional de cuentas existentes (ChartMogul).",
+    dataSource: "chartmogul",
+    sortOrder: 5,
+  },
+  {
+    name: "ASP (Ticket promedio)",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "≥ $450",
+    targetNumeric: 450,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "$",
+    calculation: "Average Sale Price de los nuevos cierres (ChartMogul).",
+    dataSource: "chartmogul",
+    sortOrder: 6,
+  },
+
   // COMERCIAL — Fede
   {
     name: "Fit Score del cliente",
@@ -329,8 +422,8 @@ const KPIS: KPISeed[] = [
     direction: "ABOVE",
     displayOrder: 1,
     isPrincipal: false,
-    sourceType: "CHARTMOGUL",
-    sourceKey: "mrr",
+    sourceType: "SCORECARD",
+    sourceKey: "MRR",
     ownerRole: "ceo",
     entries: [
       { period: "2026-05-01", projected: 61144 },
@@ -354,8 +447,8 @@ const KPIS: KPISeed[] = [
     direction: "ABOVE",
     displayOrder: 2,
     isPrincipal: true,
-    sourceType: "CHARTMOGUL",
-    sourceKey: "ndr",
+    sourceType: "SCORECARD",
+    sourceKey: "NDR",
     ownerRole: "ceo",
     entries: [
       { period: "2026-05-01", projected: 0.9349 },
@@ -379,8 +472,8 @@ const KPIS: KPISeed[] = [
     direction: "BELOW",
     displayOrder: 3,
     isPrincipal: false,
-    sourceType: "CHARTMOGUL",
-    sourceKey: "ccr",
+    sourceType: "SCORECARD",
+    sourceKey: "CCR",
     ownerRole: "ceo",
     entries: [
       { period: "2026-05-01", projected: 0.0689 },
@@ -438,8 +531,8 @@ const KPIS: KPISeed[] = [
     direction: "ABOVE",
     displayOrder: 11,
     isPrincipal: false,
-    sourceType: "CHARTMOGUL",
-    sourceKey: "new_biz_mrr",
+    sourceType: "SCORECARD",
+    sourceKey: "New Biz MRR",
     ownerRole: "sales",
     entries: [
       { period: "2026-05-01", projected: 6328 },
@@ -463,8 +556,8 @@ const KPIS: KPISeed[] = [
     direction: "ABOVE",
     displayOrder: 12,
     isPrincipal: false,
-    sourceType: "CHARTMOGUL",
-    sourceKey: "asp",
+    sourceType: "SCORECARD",
+    sourceKey: "ASP (Ticket promedio)",
     ownerRole: "sales",
     entries: flatEntries(450),
   },
@@ -545,8 +638,8 @@ const KPIS: KPISeed[] = [
     direction: "ABOVE",
     displayOrder: 21,
     isPrincipal: false,
-    sourceType: "CHARTMOGUL",
-    sourceKey: "expansion_mrr",
+    sourceType: "SCORECARD",
+    sourceKey: "Expansion MRR",
     ownerRole: "cs",
     entries: [
       { period: "2026-05-01", projected: 327 },
@@ -1154,6 +1247,49 @@ export async function seedPlanH2() {
           kpiId: created.id,
           period: new Date(entry.period),
           projected: entry.projected,
+        },
+      });
+    }
+  }
+
+  // One-time migration: copy existing PlanKPIEntry.actual values (populated by
+  // previous ChartMogul syncs) over to ScorecardEntry, so historical data
+  // doesn't disappear when these KPIs switch source to SCORECARD.
+  const quarters = await prisma.quarter.findMany();
+  function findQuarterForDate(d: Date): string | undefined {
+    return quarters.find((q) => d >= q.startDate && d <= q.endDate)?.id;
+  }
+  for (const m of CHARTMOGUL_SCORECARD_METRICS) {
+    const metric = await prisma.scorecardMetric.findFirst({ where: { name: m.name } });
+    if (!metric) continue;
+    const planKpi = await prisma.planKPI.findFirst({
+      where: { planId: plan.id, slug: m.slug },
+      include: { entries: true },
+    });
+    if (!planKpi) continue;
+
+    for (const entry of planKpi.entries) {
+      if (entry.actual === null) continue;
+      const periodStart = new Date(
+        Date.UTC(entry.period.getUTCFullYear(), entry.period.getUTCMonth(), 1)
+      );
+      const periodEnd = new Date(
+        Date.UTC(entry.period.getUTCFullYear(), entry.period.getUTCMonth() + 1, 0)
+      );
+      const quarterId = findQuarterForDate(periodStart);
+      if (!quarterId) continue;
+      const value = m.isPct ? entry.actual * 100 : entry.actual;
+      await prisma.scorecardEntry.upsert({
+        where: { metricId_periodStart: { metricId: metric.id, periodStart } },
+        update: { actualValue: value, autoSynced: true },
+        create: {
+          metricId: metric.id,
+          quarterId,
+          periodStart,
+          periodEnd,
+          actualValue: value,
+          autoSynced: true,
+          status: "on_track",
         },
       });
     }
