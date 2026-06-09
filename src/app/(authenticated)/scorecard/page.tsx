@@ -54,13 +54,18 @@ export default async function ScorecardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Scorecard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {activeQuarter
-            ? `Q${activeQuarter.quarter} ${activeQuarter.year}`
-            : "Sin trimestre activo"}
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Scorecard</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {activeQuarter
+              ? `Q${activeQuarter.quarter} ${activeQuarter.year}`
+              : "Sin trimestre activo"}
+          </p>
+        </div>
+        {session?.user?.role === "ceo" && (
+          <ScorecardSyncButton planId={activePlan?.id ?? null} />
+        )}
       </div>
 
       {grouped.map((group) => (
@@ -91,7 +96,6 @@ export default async function ScorecardPage() {
                   const status = lastEntry?.status || "pending";
                   const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
                   const isOwner = session?.user?.id === metric.ownerId;
-                  const isCEO = session?.user?.role === "ceo";
                   const source = normalizeSource(metric.dataSource);
                   const sourceMeta = SOURCE_META[source];
                   const isManual = source === "manual";
@@ -137,11 +141,6 @@ export default async function ScorecardPage() {
                               targetDirection={metric.targetDirection}
                             />
                           )
-                        ) : isCEO ? (
-                          <ScorecardSyncButton
-                            dataSource={source}
-                            planId={activePlan?.id ?? null}
-                          />
                         ) : (
                           <span className="text-[11px] text-gray-400">Auto</span>
                         )}

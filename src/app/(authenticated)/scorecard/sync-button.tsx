@@ -3,45 +3,38 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Source = "chartmogul" | "hubspot" | "posthog" | "chat" | "manual";
-
-const ROUTE_BY_SOURCE: Partial<Record<Source, string>> = {
-  chartmogul: "/api/sync/plan-kpis",
-};
-
-export function ScorecardSyncButton({
-  dataSource,
-  planId,
-}: {
-  dataSource: Source;
-  planId: string | null;
-}) {
+export function ScorecardSyncButton({ planId }: { planId: string | null }) {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
 
-  const route = ROUTE_BY_SOURCE[dataSource];
-  const wired = Boolean(route) && Boolean(planId);
-
   async function handleSync() {
-    if (!wired || !route) return;
+    if (!planId) {
+      setFeedback("Sin plan activo");
+      return;
+    }
     setLoading(true);
     setFeedback(null);
     try {
-      const res = await fetch(route, {
+      const res = await fetch("/api/sync/plan-kpis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         updated?: number;
+        skipped?: number;
         errors?: string[];
         error?: string;
       };
       if (!res.ok) {
         setFeedback(data.error || `Error ${res.status}`);
       } else {
-        setFeedback(`✓ ${data.updated ?? 0} actualizado${(data.updated ?? 0) === 1 ? "" : "s"}`);
+        const parts = [`✓ ${data.updated ?? 0} actualizados`];
+        if (data.skipped) parts.push(`${data.skipped} omitidos`);
+        if (data.errors && data.errors.length > 0)
+          parts.push(`errores: ${data.errors.join(", ")}`);
+        setFeedback(parts.join(" · "));
         router.refresh();
       }
     } catch (err) {
@@ -51,27 +44,16 @@ export function ScorecardSyncButton({
     }
   }
 
-  if (!wired) {
-    return (
-      <span
-        className="inline-flex cursor-not-allowed items-center rounded-md bg-gray-50 px-3 py-1 text-xs text-gray-400"
-        title="Auto-sync pendiente para esta fuente"
-      >
-        Sincronizar
-      </span>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-3">
       <button
         onClick={handleSync}
-        disabled={loading}
-        className="rounded-md bg-mawi-50 px-3 py-1 text-xs font-medium text-mawi-700 hover:bg-mawi-100 disabled:opacity-50"
+        disabled={loading || !planId}
+        className="rounded-md bg-mawi-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-mawi-700 disabled:opacity-50"
       >
-        {loading ? "Sincronizando…" : "Sincronizar"}
+        {loading ? "Sincronizando…" : "Sincronizar ChartMogul"}
       </button>
-      {feedback && <span className="text-[11px] text-gray-500">{feedback}</span>}
+      {feedback && <span className="text-xs text-gray-500">{feedback}</span>}
     </div>
   );
 }

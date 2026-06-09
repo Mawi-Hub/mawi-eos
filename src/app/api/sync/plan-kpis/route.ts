@@ -6,10 +6,12 @@ import {
   getCustomerChurnRate,
   getMRRChurnRate,
   getASPMetric,
+  getARPA,
   parseMRREntries,
   parseCustomerChurnEntries,
   parseMRRChurnRateEntries,
   parseASPEntries,
+  parseARPAEntries,
   type MRRBreakdown,
 } from "@/lib/integrations/chartmogul";
 
@@ -103,6 +105,7 @@ export async function POST(request: Request) {
   const ndrByMonth = new Map<number, number>();
   const aspByMonth = new Map<number, number>();
   const churnByMonth = new Map<number, number>();
+  const arpaByMonth = new Map<number, number>();
   const errors: string[] = [];
 
   try {
@@ -131,9 +134,41 @@ export async function POST(request: Request) {
   } catch (e) {
     errors.push(`ccr: ${(e as Error).message}`);
   }
+  try {
+    for (const r of parseARPAEntries(await getARPA(ymd(fetchStart), ymd(fetchEndLast)))) {
+      arpaByMonth.set(periodFromCMDate(r.date).getTime(), r.arpa);
+    }
+  } catch (e) {
+    errors.push(`arpa: ${(e as Error).message}`);
+  }
 
   const mrrByMonth = new Map<number, MRRBreakdown>();
   for (const m of mrrBreakdown) mrrByMonth.set(periodFromCMDate(m.date).getTime(), m);
+
+  // Month-over-month MRR growth %, indexed by current-month periodMs.
+  // Uses the prev month's MRR from the same fetch.
+  const mrrGrowthByMonth = new Map<number, number>();
+  for (const m of mrrBreakdown) {
+    const periodMs = periodFromCMDate(m.date).getTime();
+    const prevMs = shiftMonths(new Date(periodMs), -1).getTime();
+    const prev = mrrByMonth.get(prevMs);
+    if (!prev || prev.mrr === 0) continue;
+    const growthPct = ((m.mrr - prev.mrr) / prev.mrr) * 100;
+    mrrGrowthByMonth.set(periodMs, growthPct);
+  }
+
+  // Net New MRR = newBiz + expansion + reactivation − churn − contraction.
+  const netNewMRRByMonth = new Map<number, number>();
+  for (const m of mrrBreakdown) {
+    const periodMs = periodFromCMDate(m.date).getTime();
+    const value =
+      m.mrrNewBusiness +
+      m.mrrExpansion +
+      Math.abs(m.mrrReactivation) -
+      Math.abs(m.mrrChurn) -
+      Math.abs(m.mrrContraction);
+    netNewMRRByMonth.set(periodMs, value);
+  }
 
   function rawValueFor(slug: string, periodMs: number): number | null {
     const m = mrrByMonth.get(periodMs);
@@ -155,10 +190,28 @@ export async function POST(request: Request) {
     }
   }
 
+  // Additional Scorecard metrics that aren't 1:1 with a Plan KPI but should
+  // still update from ChartMogul each sync (computed or supplementary).
+  const EXTRA_METRICS: { name: string; getValue: (ms: number) => number | null }[] = [
+    { name: "MRR Growth %", getValue: (ms) => mrrGrowthByMonth.get(ms) ?? null },
+    { name: "New MRR", getValue: (ms) => netNewMRRByMonth.get(ms) ?? null },
+    {
+      name: "Churn (Logo y Revenue)",
+      getValue: (ms) => {
+        const ccr = churnByMonth.get(ms);
+        return ccr === undefined ? null : ccr * 100;
+      },
+    },
+    { name: "ARPA", getValue: (ms) => arpaByMonth.get(ms) ?? null },
+  ];
+
   // Resolve target Scorecard metrics by name + cache Quarter lookup.
-  const metricNames = CHARTMOGUL_SCORECARD_METRICS.map((m) => m.name);
+  const allMetricNames = [
+    ...CHARTMOGUL_SCORECARD_METRICS.map((m) => m.name),
+    ...EXTRA_METRICS.map((m) => m.name),
+  ];
   const scorecardMetrics = await prisma.scorecardMetric.findMany({
-    where: { name: { in: metricNames } },
+    where: { name: { in: allMetricNames } },
   });
   const metricByName = new Map(scorecardMetrics.map((m) => [m.name, m]));
 
@@ -194,6 +247,47 @@ export async function POST(request: Request) {
       const value = m.isPct ? raw * 100 : raw;
       const periodEnd = lastOfMonthUTC(periodStart);
 
+      await prisma.scorecardEntry.upsert({
+        where: { metricId_periodStart: { metricId: metric.id, periodStart } },
+        update: {
+          actualValue: value,
+          actualDisplay: null,
+          autoSynced: true,
+          status: "on_track",
+          notes: `ChartMogul sync ${ymd(today)}`,
+        },
+        create: {
+          metricId: metric.id,
+          quarterId,
+          periodStart,
+          periodEnd,
+          actualValue: value,
+          autoSynced: true,
+          status: "on_track",
+          notes: `ChartMogul sync ${ymd(today)}`,
+        },
+      });
+      updated++;
+    }
+  }
+
+  // Same loop for computed/extra ChartMogul-backed Scorecard metrics.
+  for (const extra of EXTRA_METRICS) {
+    const metric = metricByName.get(extra.name);
+    if (!metric) continue; // Not present in DB; ignore quietly.
+    for (const periodMs of monthlyPeriods) {
+      const periodStart = new Date(periodMs);
+      const quarterId = findQuarterForDate(periodStart);
+      if (!quarterId) {
+        skipped++;
+        continue;
+      }
+      const value = extra.getValue(periodMs);
+      if (value === null || Number.isNaN(value)) {
+        skipped++;
+        continue;
+      }
+      const periodEnd = lastOfMonthUTC(periodStart);
       await prisma.scorecardEntry.upsert({
         where: { metricId_periodStart: { metricId: metric.id, periodStart } },
         update: {
