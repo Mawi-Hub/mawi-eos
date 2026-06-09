@@ -2,6 +2,25 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { CATEGORIES, STATUS_CONFIG } from "@/lib/utils";
 import { ScorecardEntryForm } from "./entry-form";
+import { ScorecardSyncButton } from "./sync-button";
+
+type SourceKey = "chartmogul" | "hubspot" | "posthog" | "chat" | "manual";
+
+const SOURCE_META: Record<SourceKey, { label: string; className: string }> = {
+  chartmogul: { label: "ChartMogul", className: "bg-emerald-100 text-emerald-800" },
+  hubspot: { label: "HubSpot", className: "bg-orange-100 text-orange-800" },
+  posthog: { label: "PostHog", className: "bg-purple-100 text-purple-800" },
+  chat: { label: "Chat", className: "bg-sky-100 text-sky-800" },
+  manual: { label: "Manual", className: "bg-gray-100 text-gray-700" },
+};
+
+function normalizeSource(value: string | null): SourceKey {
+  const lower = (value ?? "manual").toLowerCase();
+  if (lower === "chartmogul" || lower === "hubspot" || lower === "posthog" || lower === "chat") {
+    return lower;
+  }
+  return "manual";
+}
 
 export default async function ScorecardPage() {
   const session = await auth();
@@ -19,6 +38,12 @@ export default async function ScorecardPage() {
 
   const activeQuarter = await prisma.quarter.findFirst({
     where: { isActive: true },
+  });
+
+  const activePlan = await prisma.plan.findFirst({
+    where: { status: "ACTIVE" },
+    orderBy: { startDate: "desc" },
+    select: { id: true },
   });
 
   const grouped = Object.entries(CATEGORIES).map(([key, config]) => ({
@@ -55,6 +80,7 @@ export default async function ScorecardPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Target</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Estado</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Frecuencia</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Origen</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Actualizado</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Acciones</th>
                 </tr>
@@ -65,6 +91,10 @@ export default async function ScorecardPage() {
                   const status = lastEntry?.status || "pending";
                   const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
                   const isOwner = session?.user?.id === metric.ownerId;
+                  const isCEO = session?.user?.role === "ceo";
+                  const source = normalizeSource(metric.dataSource);
+                  const sourceMeta = SOURCE_META[source];
+                  const isManual = source === "manual";
 
                   return (
                     <tr key={metric.id} className="hover:bg-gray-50">
@@ -83,21 +113,37 @@ export default async function ScorecardPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs capitalize text-gray-500">{metric.frequency}</td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${sourceMeta.className}`}
+                        >
+                          {sourceMeta.label}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-xs text-gray-400">
                         {lastEntry?.updatedAt
                           ? new Date(lastEntry.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })
                           : "—"}
                       </td>
                       <td className="px-4 py-3">
-                        {isOwner && activeQuarter && (
-                          <ScorecardEntryForm
-                            metricId={metric.id}
-                            metricName={metric.name}
-                            quarterId={activeQuarter.id}
-                            unit={metric.unit}
-                            targetNumeric={metric.targetNumeric}
-                            targetDirection={metric.targetDirection}
+                        {isManual ? (
+                          isOwner && activeQuarter && (
+                            <ScorecardEntryForm
+                              metricId={metric.id}
+                              metricName={metric.name}
+                              quarterId={activeQuarter.id}
+                              unit={metric.unit}
+                              targetNumeric={metric.targetNumeric}
+                              targetDirection={metric.targetDirection}
+                            />
+                          )
+                        ) : isCEO ? (
+                          <ScorecardSyncButton
+                            dataSource={source}
+                            planId={activePlan?.id ?? null}
                           />
+                        ) : (
+                          <span className="text-[11px] text-gray-400">Auto</span>
                         )}
                       </td>
                     </tr>
