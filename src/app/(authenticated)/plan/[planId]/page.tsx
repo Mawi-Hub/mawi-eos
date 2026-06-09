@@ -1,12 +1,16 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { Plan3Palancas } from "@/components/plan/Plan3Palancas";
 import { PlanNorthStars } from "@/components/plan/PlanNorthStars";
 import { PlanRevenueTree } from "@/components/plan/PlanRevenueTree";
-import { PlanKPICard } from "@/components/plan/PlanKPICard";
-import { PlanProposalCard } from "@/components/plan/PlanProposalCard";
+import { PlanAreaSection } from "@/components/plan/PlanAreaSection";
 import type { KPIDirection } from "@/lib/plan/calculations";
+import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
 import { PlanSyncButton } from "./sync-button";
+
+const AREAS = ["COMERCIAL", "CUSTOMER_SUCCESS", "PRODUCTO", "INGENIERIA"] as const;
+type AreaKey = (typeof AREAS)[number];
 
 export default async function PlanOverviewPage({
   params,
@@ -26,19 +30,17 @@ export default async function PlanOverviewPage({
         },
         orderBy: { displayOrder: "asc" },
       },
-      proposals: {
-        include: {
-          owner: { select: { id: true, name: true } },
-          milestones: { orderBy: { targetDate: "asc" } },
-        },
-        orderBy: { createdAt: "desc" },
+      actions: {
+        include: { owner: { select: { id: true, name: true } } },
+        orderBy: { displayOrder: "asc" },
       },
+      risks: { orderBy: { displayOrder: "asc" } },
     },
   });
 
   if (!plan) notFound();
 
-  const kpisForUI = plan.kpis.map((k) => ({
+  const kpisRaw = plan.kpis.map((k) => ({
     id: k.id,
     slug: k.slug,
     name: k.name,
@@ -46,9 +48,61 @@ export default async function PlanOverviewPage({
     direction: k.direction as KPIDirection,
     baseline: k.baseline,
     target: k.target,
+    area: k.area as "NORTH_STAR" | AreaKey,
+    isPrincipal: k.isPrincipal,
+    sourceType: k.sourceType as string,
+    sourceKey: k.sourceKey as string | null,
     owner: k.owner,
-    entries: k.entries,
+    entries: k.entries.map((e) => ({
+      period: e.period,
+      projected: e.projected,
+      actual: e.actual,
+    })),
   }));
+
+  const kpisForUI = await overlayScorecardActuals(kpisRaw);
+
+  const northStarKpis = kpisForUI.filter((k) => k.area === "NORTH_STAR");
+  const byArea: Record<AreaKey, typeof kpisForUI> = {
+    COMERCIAL: [],
+    CUSTOMER_SUCCESS: [],
+    PRODUCTO: [],
+    INGENIERIA: [],
+  };
+  for (const kpi of kpisForUI) {
+    if (kpi.area !== "NORTH_STAR") byArea[kpi.area].push(kpi);
+  }
+
+  const actionsByArea: Record<AreaKey, typeof plan.actions> = {
+    COMERCIAL: [],
+    CUSTOMER_SUCCESS: [],
+    PRODUCTO: [],
+    INGENIERIA: [],
+  };
+  for (const action of plan.actions) {
+    const area = action.area as AreaKey | "NORTH_STAR";
+    if (area !== "NORTH_STAR") actionsByArea[area].push(action);
+  }
+
+  const risksByArea: Record<AreaKey, typeof plan.risks> = {
+    COMERCIAL: [],
+    CUSTOMER_SUCCESS: [],
+    PRODUCTO: [],
+    INGENIERIA: [],
+  };
+  for (const risk of plan.risks) {
+    const area = risk.area as AreaKey | "NORTH_STAR";
+    if (area !== "NORTH_STAR") risksByArea[area].push(risk);
+  }
+
+  function ownerNameForArea(area: AreaKey): string {
+    const principal = byArea[area].find((k) => k.isPrincipal);
+    if (principal) return principal.owner.name;
+    const action = actionsByArea[area].find((a) => a.owner);
+    if (action?.owner) return action.owner.name;
+    const anyKpi = byArea[area][0];
+    return anyKpi?.owner.name ?? "—";
+  }
 
   return (
     <div className="space-y-8">
@@ -58,53 +112,42 @@ export default async function PlanOverviewPage({
         </section>
       )}
 
+      <Plan3Palancas kpis={northStarKpis} />
+
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
           North Stars
         </h2>
-        <PlanNorthStars kpis={kpisForUI} />
+        <PlanNorthStars kpis={northStarKpis} />
       </section>
 
       <section>
-        <PlanRevenueTree kpis={kpisForUI} />
+        <PlanRevenueTree kpis={northStarKpis} />
       </section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-          KPIs del plan
+      <section className="space-y-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Cuatro áreas, una sola misión
         </h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {kpisForUI.map((kpi) => (
-            <PlanKPICard
-              key={kpi.id}
-              planId={planId}
-              kpiId={kpi.id}
-              name={kpi.name}
-              unit={kpi.unit}
-              direction={kpi.direction}
-              target={kpi.target}
-              ownerName={kpi.owner.name}
-              entries={kpi.entries}
-            />
-          ))}
-        </div>
+        {AREAS.map((area) => (
+          <PlanAreaSection
+            key={area}
+            planId={planId}
+            area={area}
+            ownerName={ownerNameForArea(area)}
+            kpis={byArea[area]}
+            actions={actionsByArea[area]}
+            risks={risksByArea[area]}
+          />
+        ))}
       </section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-          Propuestas del equipo
-        </h2>
-        {plan.proposals.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white p-6 text-center text-sm text-gray-500">
-            Aún no hay propuestas para este plan.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {plan.proposals.map((p) => (
-              <PlanProposalCard key={p.id} proposal={p} />
-            ))}
-          </div>
-        )}
+      <section className="rounded-2xl border border-gray-200 bg-gradient-to-r from-mawi-50 to-white p-6 text-center">
+        <p className="text-sm font-medium text-mawi-900">
+          Si el NDR sube, todos ganamos.
+          <br />
+          Si el NDR baja, todos somos responsables.
+        </p>
       </section>
     </div>
   );

@@ -1,19 +1,53 @@
 import "dotenv/config";
 import { prisma } from "../../src/lib/db";
 
+type Area = "NORTH_STAR" | "COMERCIAL" | "CUSTOMER_SUCCESS" | "PRODUCTO" | "INGENIERIA";
+type OwnerRole = "ceo" | "sales" | "cs" | "product" | "engineering";
+
 type KPISeed = {
   name: string;
   slug: string;
   category: "REVENUE" | "RETENTION" | "GROWTH" | "EFFICIENCY";
+  area: Area;
   baseline: number;
   target: number;
   unit: "USD" | "PCT" | "count";
   direction: "ABOVE" | "BELOW";
   displayOrder: number;
-  sourceType: "MANUAL" | "CHARTMOGUL" | "HUBSPOT" | "POSTHOG";
+  isPrincipal: boolean;
+  sourceType: "MANUAL" | "CHARTMOGUL" | "HUBSPOT" | "POSTHOG" | "SCORECARD";
   sourceKey: string | null;
-  ownerRole: "ceo" | "sales" | "cs" | "product" | "engineering";
+  ownerRole: OwnerRole;
   entries: { period: string; projected: number }[];
+};
+
+type ScorecardSeed = {
+  name: string;
+  category: "revenue_health" | "sales_health" | "customer_success" | "product_engineering" | "financial_health";
+  ownerRole: OwnerRole;
+  targetValue: string;
+  targetNumeric: number;
+  targetDirection: "above" | "below" | "equal";
+  frequency: "weekly" | "biweekly" | "monthly";
+  unit: string;
+  calculation: string;
+  dataSource: "manual" | "chartmogul" | "hubspot" | "posthog";
+  sortOrder: number;
+};
+
+type ActionSeed = {
+  area: Area;
+  ownerRole: OwnerRole;
+  title: string;
+  expectedImpact: string;
+  displayOrder: number;
+};
+
+type RiskSeed = {
+  area: Area;
+  title: string;
+  description: string;
+  displayOrder: number;
 };
 
 const PLAN: {
@@ -30,16 +64,291 @@ const PLAN: {
   status: "ACTIVE",
 };
 
+const MONTHS = [
+  "2026-05-01",
+  "2026-06-01",
+  "2026-07-01",
+  "2026-08-01",
+  "2026-09-01",
+  "2026-10-01",
+  "2026-11-01",
+  "2026-12-01",
+];
+
+function linearEntries(baseline: number, target: number): { period: string; projected: number }[] {
+  return MONTHS.map((period, idx) => {
+    if (idx < 2) return { period, projected: baseline };
+    const step = (target - baseline) / 6;
+    return {
+      period,
+      projected: Number((baseline + step * (idx - 1)).toFixed(4)),
+    };
+  });
+}
+
+function flatEntries(value: number): { period: string; projected: number }[] {
+  return MONTHS.map((period) => ({ period, projected: value }));
+}
+
+// Scorecard metrics que se crean si no existen. Sirven como fuente de los actuals
+// para las KPIs de área del plan (las que no vienen de Chartmogul).
+const SCORECARD_METRICS: ScorecardSeed[] = [
+  // COMERCIAL
+  {
+    name: "Fit Score promedio",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "80%",
+    targetNumeric: 80,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "%",
+    calculation: "Promedio del Fit Score de clientes cerrados en la semana (0-100).",
+    dataSource: "manual",
+    sortOrder: 100,
+  },
+  {
+    name: "Pipeline Ratio (3x cuota)",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "3.0",
+    targetNumeric: 3.0,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "ratio",
+    calculation: "Pipeline activo ÷ cuota mensual.",
+    dataSource: "manual",
+    sortOrder: 101,
+  },
+  {
+    name: "Llamadas por rep / semana",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "50",
+    targetNumeric: 50,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "count",
+    calculation: "Promedio de llamadas activas por SDR/AE.",
+    dataSource: "manual",
+    sortOrder: 102,
+  },
+  {
+    name: "Desviación Proyección vs Cierre",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "10%",
+    targetNumeric: 10,
+    targetDirection: "below",
+    frequency: "monthly",
+    unit: "%",
+    calculation: "|Proyectado − Cerrado| ÷ Proyectado.",
+    dataSource: "manual",
+    sortOrder: 103,
+  },
+
+  // CUSTOMER SUCCESS
+  {
+    name: "Usage Score promedio",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "70",
+    targetNumeric: 70,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "score",
+    calculation: "Score promedio de uso por cuenta (0-100).",
+    dataSource: "posthog",
+    sortOrder: 110,
+  },
+  {
+    name: "% cuentas críticas",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "10%",
+    targetNumeric: 10,
+    targetDirection: "below",
+    frequency: "weekly",
+    unit: "%",
+    calculation: "% de cuentas en estado crítico según Health Score.",
+    dataSource: "manual",
+    sortOrder: 111,
+  },
+  {
+    name: "Time to Active",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "30 días",
+    targetNumeric: 30,
+    targetDirection: "below",
+    frequency: "biweekly",
+    unit: "days",
+    calculation: "Días entre kickoff y primera activación.",
+    dataSource: "manual",
+    sortOrder: 112,
+  },
+  {
+    name: "Time to Adopt",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "60 días",
+    targetNumeric: 60,
+    targetDirection: "below",
+    frequency: "monthly",
+    unit: "days",
+    calculation: "Días entre activación y adopción.",
+    dataSource: "manual",
+    sortOrder: 113,
+  },
+  {
+    name: "Contactabilidad activación",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "85%",
+    targetNumeric: 85,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "%",
+    calculation: "% de clientes nuevos contactables en activación.",
+    dataSource: "manual",
+    sortOrder: 114,
+  },
+  {
+    name: "Upselling cerrado MRR",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "$1,200",
+    targetNumeric: 1200,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "$",
+    calculation: "MRR adicional cerrado vía upselling.",
+    dataSource: "manual",
+    sortOrder: 115,
+  },
+  {
+    name: "CSAT (soporte)",
+    category: "customer_success",
+    ownerRole: "cs",
+    targetValue: "4.5/5",
+    targetNumeric: 4.5,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "score",
+    calculation: "CSAT promedio del soporte (1-5).",
+    dataSource: "manual",
+    sortOrder: 116,
+  },
+
+  // PRODUCTO
+  {
+    name: "% clientes ≥10 sem activas 90d",
+    category: "product_engineering",
+    ownerRole: "product",
+    targetValue: "70%",
+    targetNumeric: 70,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "%",
+    calculation: "% clientes nuevos con ≥10 semanas activas en sus primeros 90 días.",
+    dataSource: "posthog",
+    sortOrder: 120,
+  },
+  {
+    name: "% clientes score ≥2/3 d30",
+    category: "product_engineering",
+    ownerRole: "product",
+    targetValue: "65%",
+    targetNumeric: 65,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "%",
+    calculation: "% clientes nuevos con score ≥2/3 al día 30.",
+    dataSource: "posthog",
+    sortOrder: 121,
+  },
+  {
+    name: "Proyectos de usabilidad / mes",
+    category: "product_engineering",
+    ownerRole: "product",
+    targetValue: "2",
+    targetNumeric: 2,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "count",
+    calculation: "Proyectos de usabilidad ejecutados en el mes.",
+    dataSource: "manual",
+    sortOrder: 122,
+  },
+
+  // INGENIERÍA
+  {
+    name: "MRR en Riesgo",
+    category: "product_engineering",
+    ownerRole: "engineering",
+    targetValue: "$3,000",
+    targetNumeric: 3000,
+    targetDirection: "below",
+    frequency: "monthly",
+    unit: "$",
+    calculation: "MRR asociado a clientes afectados por bugs o incidentes.",
+    dataSource: "manual",
+    sortOrder: 130,
+  },
+  {
+    name: "Volumen de Bugs (clientes)",
+    category: "product_engineering",
+    ownerRole: "engineering",
+    targetValue: "25/mes",
+    targetNumeric: 25,
+    targetDirection: "below",
+    frequency: "monthly",
+    unit: "count",
+    calculation: "Bugs reportados por clientes en el mes.",
+    dataSource: "manual",
+    sortOrder: 131,
+  },
+  {
+    name: "Delivery Rate",
+    category: "product_engineering",
+    ownerRole: "engineering",
+    targetValue: "90%",
+    targetNumeric: 90,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "%",
+    calculation: "% entregas cerradas en la fecha comprometida.",
+    dataSource: "manual",
+    sortOrder: 132,
+  },
+  {
+    name: "Improvements cerrados / mes",
+    category: "product_engineering",
+    ownerRole: "engineering",
+    targetValue: "10/mes",
+    targetNumeric: 10,
+    targetDirection: "above",
+    frequency: "monthly",
+    unit: "count",
+    calculation: "Improvements (no bugs) entregados en el mes.",
+    dataSource: "manual",
+    sortOrder: 133,
+  },
+];
+
 const KPIS: KPISeed[] = [
+  // NORTH STARS / Árbol del MRR
   {
     name: "MRR",
     slug: "mrr",
     category: "REVENUE",
+    area: "NORTH_STAR",
     baseline: 61144,
     target: 121000,
     unit: "USD",
     direction: "ABOVE",
     displayOrder: 1,
+    isPrincipal: true,
     sourceType: "CHARTMOGUL",
     sourceKey: "mrr",
     ownerRole: "ceo",
@@ -58,11 +367,13 @@ const KPIS: KPISeed[] = [
     name: "NDR",
     slug: "ndr",
     category: "RETENTION",
+    area: "NORTH_STAR",
     baseline: 0.9349,
     target: 0.985,
     unit: "PCT",
     direction: "ABOVE",
     displayOrder: 2,
+    isPrincipal: true,
     sourceType: "CHARTMOGUL",
     sourceKey: "ndr",
     ownerRole: "ceo",
@@ -81,11 +392,13 @@ const KPIS: KPISeed[] = [
     name: "CCR",
     slug: "ccr",
     category: "RETENTION",
+    area: "NORTH_STAR",
     baseline: 0.0689,
     target: 0.027,
     unit: "PCT",
     direction: "BELOW",
     displayOrder: 3,
+    isPrincipal: true,
     sourceType: "CHARTMOGUL",
     sourceKey: "ccr",
     ownerRole: "cs",
@@ -104,11 +417,13 @@ const KPIS: KPISeed[] = [
     name: "New Biz MRR",
     slug: "new_biz_mrr",
     category: "GROWTH",
+    area: "NORTH_STAR",
     baseline: 6328,
     target: 13560,
     unit: "USD",
     direction: "ABOVE",
     displayOrder: 4,
+    isPrincipal: false,
     sourceType: "CHARTMOGUL",
     sourceKey: "new_biz_mrr",
     ownerRole: "sales",
@@ -127,11 +442,13 @@ const KPIS: KPISeed[] = [
     name: "Expansion MRR",
     slug: "expansion_mrr",
     category: "GROWTH",
+    area: "NORTH_STAR",
     baseline: 234,
     target: 1200,
     unit: "USD",
     direction: "ABOVE",
     displayOrder: 5,
+    isPrincipal: false,
     sourceType: "CHARTMOGUL",
     sourceKey: "expansion_mrr",
     ownerRole: "cs",
@@ -150,24 +467,615 @@ const KPIS: KPISeed[] = [
     name: "ASP",
     slug: "asp",
     category: "GROWTH",
+    area: "NORTH_STAR",
     baseline: 452,
     target: 452,
     unit: "USD",
     direction: "ABOVE",
     displayOrder: 6,
+    isPrincipal: false,
     sourceType: "CHARTMOGUL",
     sourceKey: "asp",
     ownerRole: "sales",
-    entries: [
-      { period: "2026-05-01", projected: 452 },
-      { period: "2026-06-01", projected: 452 },
-      { period: "2026-07-01", projected: 452 },
-      { period: "2026-08-01", projected: 452 },
-      { period: "2026-09-01", projected: 452 },
-      { period: "2026-10-01", projected: 452 },
-      { period: "2026-11-01", projected: 452 },
-      { period: "2026-12-01", projected: 452 },
-    ],
+    entries: flatEntries(452),
+  },
+
+  // COMERCIAL — Fede
+  {
+    name: "Fit Score promedio cierres",
+    slug: "fit_score",
+    category: "GROWTH",
+    area: "COMERCIAL",
+    baseline: 0.6,
+    target: 0.8,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 10,
+    isPrincipal: true,
+    sourceType: "SCORECARD",
+    sourceKey: "Fit Score promedio",
+    ownerRole: "sales",
+    entries: linearEntries(0.6, 0.8),
+  },
+  {
+    name: "Show Rate mensual",
+    slug: "show_rate",
+    category: "EFFICIENCY",
+    area: "COMERCIAL",
+    baseline: 0.5,
+    target: 0.7,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 11,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Show Rate",
+    ownerRole: "sales",
+    entries: linearEntries(0.5, 0.7),
+  },
+  {
+    name: "Close Rate",
+    slug: "close_rate",
+    category: "EFFICIENCY",
+    area: "COMERCIAL",
+    baseline: 0.18,
+    target: 0.25,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 12,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Close Rate",
+    ownerRole: "sales",
+    entries: linearEntries(0.18, 0.25),
+  },
+  {
+    name: "Pipeline 3x cuota",
+    slug: "pipeline_ratio",
+    category: "GROWTH",
+    area: "COMERCIAL",
+    baseline: 1.5,
+    target: 3.0,
+    unit: "count",
+    direction: "ABOVE",
+    displayOrder: 13,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Pipeline Ratio (3x cuota)",
+    ownerRole: "sales",
+    entries: linearEntries(1.5, 3.0),
+  },
+  {
+    name: "Llamadas por rep / semana",
+    slug: "calls_per_rep_week",
+    category: "EFFICIENCY",
+    area: "COMERCIAL",
+    baseline: 25,
+    target: 50,
+    unit: "count",
+    direction: "ABOVE",
+    displayOrder: 14,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Llamadas por rep / semana",
+    ownerRole: "sales",
+    entries: linearEntries(25, 50),
+  },
+  {
+    name: "Desviación Proyección vs Cierre",
+    slug: "forecast_accuracy",
+    category: "EFFICIENCY",
+    area: "COMERCIAL",
+    baseline: 0.25,
+    target: 0.1,
+    unit: "PCT",
+    direction: "BELOW",
+    displayOrder: 15,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Desviación Proyección vs Cierre",
+    ownerRole: "sales",
+    entries: linearEntries(0.25, 0.1),
+  },
+
+  // CUSTOMER SUCCESS — Gaby
+  {
+    name: "Usage Score promedio cartera",
+    slug: "usage_score",
+    category: "RETENTION",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 55,
+    target: 70,
+    unit: "count",
+    direction: "ABOVE",
+    displayOrder: 20,
+    isPrincipal: true,
+    sourceType: "SCORECARD",
+    sourceKey: "Usage Score promedio",
+    ownerRole: "cs",
+    entries: linearEntries(55, 70),
+  },
+  {
+    name: "% cuentas críticas (Health Score)",
+    slug: "critical_accounts_pct",
+    category: "RETENTION",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 0.25,
+    target: 0.1,
+    unit: "PCT",
+    direction: "BELOW",
+    displayOrder: 21,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "% cuentas críticas",
+    ownerRole: "cs",
+    entries: linearEntries(0.25, 0.1),
+  },
+  {
+    name: "Time to Active",
+    slug: "time_to_active",
+    category: "EFFICIENCY",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 45,
+    target: 30,
+    unit: "count",
+    direction: "BELOW",
+    displayOrder: 22,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Time to Active",
+    ownerRole: "cs",
+    entries: linearEntries(45, 30),
+  },
+  {
+    name: "Time to Adopt",
+    slug: "time_to_adopt",
+    category: "EFFICIENCY",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 90,
+    target: 60,
+    unit: "count",
+    direction: "BELOW",
+    displayOrder: 23,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Time to Adopt",
+    ownerRole: "cs",
+    entries: linearEntries(90, 60),
+  },
+  {
+    name: "Contactabilidad activación",
+    slug: "contactability",
+    category: "EFFICIENCY",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 0.6,
+    target: 0.85,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 24,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Contactabilidad activación",
+    ownerRole: "cs",
+    entries: linearEntries(0.6, 0.85),
+  },
+  {
+    name: "Upselling cerrado",
+    slug: "upsell_closed_mrr",
+    category: "GROWTH",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 0,
+    target: 1200,
+    unit: "USD",
+    direction: "ABOVE",
+    displayOrder: 25,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Upselling cerrado MRR",
+    ownerRole: "cs",
+    entries: linearEntries(0, 1200),
+  },
+  {
+    name: "CSAT (soporte)",
+    slug: "csat",
+    category: "RETENTION",
+    area: "CUSTOMER_SUCCESS",
+    baseline: 4.2,
+    target: 4.5,
+    unit: "count",
+    direction: "ABOVE",
+    displayOrder: 26,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "CSAT (soporte)",
+    ownerRole: "cs",
+    entries: linearEntries(4.2, 4.5),
+  },
+
+  // PRODUCTO — Glori
+  {
+    name: "% clientes ≥10 sem activas en 90d",
+    slug: "active_weeks_90d",
+    category: "RETENTION",
+    area: "PRODUCTO",
+    baseline: 0.45,
+    target: 0.7,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 30,
+    isPrincipal: true,
+    sourceType: "SCORECARD",
+    sourceKey: "% clientes ≥10 sem activas 90d",
+    ownerRole: "product",
+    entries: linearEntries(0.45, 0.7),
+  },
+  {
+    name: "% clientes nuevos score ≥2/3 al d30",
+    slug: "onboarding_score_d30",
+    category: "RETENTION",
+    area: "PRODUCTO",
+    baseline: 0.4,
+    target: 0.65,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 31,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "% clientes score ≥2/3 d30",
+    ownerRole: "product",
+    entries: linearEntries(0.4, 0.65),
+  },
+  {
+    name: "Proyectos de usabilidad / mes",
+    slug: "usability_projects_month",
+    category: "EFFICIENCY",
+    area: "PRODUCTO",
+    baseline: 0,
+    target: 2,
+    unit: "count",
+    direction: "ABOVE",
+    displayOrder: 32,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Proyectos de usabilidad / mes",
+    ownerRole: "product",
+    entries: linearEntries(0, 2),
+  },
+
+  // INGENIERÍA — Adrián
+  {
+    name: "MRR en Riesgo",
+    slug: "mrr_at_risk",
+    category: "RETENTION",
+    area: "INGENIERIA",
+    baseline: 8500,
+    target: 3000,
+    unit: "USD",
+    direction: "BELOW",
+    displayOrder: 40,
+    isPrincipal: true,
+    sourceType: "SCORECARD",
+    sourceKey: "MRR en Riesgo",
+    ownerRole: "engineering",
+    entries: linearEntries(8500, 3000),
+  },
+  {
+    name: "Volumen de bugs (clientes) / mes",
+    slug: "bug_volume",
+    category: "EFFICIENCY",
+    area: "INGENIERIA",
+    baseline: 85,
+    target: 25,
+    unit: "count",
+    direction: "BELOW",
+    displayOrder: 41,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Volumen de Bugs (clientes)",
+    ownerRole: "engineering",
+    entries: linearEntries(85, 25),
+  },
+  {
+    name: "TTR (horas)",
+    slug: "ttr_hours",
+    category: "EFFICIENCY",
+    area: "INGENIERIA",
+    baseline: 72,
+    target: 24,
+    unit: "count",
+    direction: "BELOW",
+    displayOrder: 42,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Time to Resolution de Urgentes",
+    ownerRole: "engineering",
+    entries: linearEntries(72, 24),
+  },
+  {
+    name: "Delivery Rate (entregas en fecha)",
+    slug: "delivery_rate",
+    category: "EFFICIENCY",
+    area: "INGENIERIA",
+    baseline: 0.65,
+    target: 0.9,
+    unit: "PCT",
+    direction: "ABOVE",
+    displayOrder: 43,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Delivery Rate",
+    ownerRole: "engineering",
+    entries: linearEntries(0.65, 0.9),
+  },
+  {
+    name: "Improvements cerrados / mes",
+    slug: "improvements_closed",
+    category: "EFFICIENCY",
+    area: "INGENIERIA",
+    baseline: 3,
+    target: 10,
+    unit: "count",
+    direction: "ABOVE",
+    displayOrder: 44,
+    isPrincipal: false,
+    sourceType: "SCORECARD",
+    sourceKey: "Improvements cerrados / mes",
+    ownerRole: "engineering",
+    entries: linearEntries(3, 10),
+  },
+];
+
+const ACTIONS: ActionSeed[] = [
+  // COMERCIAL — Fede
+  {
+    area: "COMERCIAL",
+    ownerRole: "sales",
+    title: "IA para proceso SDR",
+    expectedImpact: "Mayor volumen de prospección sin aumentar headcount.",
+    displayOrder: 1,
+  },
+  {
+    area: "COMERCIAL",
+    ownerRole: "sales",
+    title: "Contratar perfiles outbound consultivo",
+    expectedImpact:
+      "Vendedores que entienden el sector y saben hacer outbound agresivo.",
+    displayOrder: 2,
+  },
+  {
+    area: "COMERCIAL",
+    ownerRole: "sales",
+    title: "Full ciclo inbound + outbound activo",
+    expectedImpact:
+      "LinkedIn Sales Navigator y secuencias automatizadas operativas todo el semestre.",
+    displayOrder: 3,
+  },
+  {
+    area: "COMERCIAL",
+    ownerRole: "sales",
+    title: "KPIs de actividad diaria y semanal por rep",
+    expectedImpact: "Visibilidad en tiempo real del desempeño individual.",
+    displayOrder: 4,
+  },
+  {
+    area: "COMERCIAL",
+    ownerRole: "sales",
+    title: "Escalar contenido de marketing y campañas segmentadas",
+    expectedImpact:
+      "Calidad del lead mejora; ciclo de venta se acorta.",
+    displayOrder: 5,
+  },
+
+  // CUSTOMER SUCCESS — Gaby
+  {
+    area: "CUSTOMER_SUCCESS",
+    ownerRole: "cs",
+    title: "División activación / adopción / success",
+    expectedImpact:
+      "30d activar, 30–60d adoptar, luego pase a Success — claridad en el journey.",
+    displayOrder: 1,
+  },
+  {
+    area: "CUSTOMER_SUCCESS",
+    ownerRole: "cs",
+    title: "Health Score activo en Agency",
+    expectedImpact: "Menos cuentas críticas y en riesgo sin detectar.",
+    displayOrder: 2,
+  },
+  {
+    area: "CUSTOMER_SUCCESS",
+    ownerRole: "cs",
+    title: "Sesiones de monitoreo y escalamiento preventivo",
+    expectedImpact:
+      "Detectar señales de churn antes de que el cliente avise.",
+    displayOrder: 3,
+  },
+  {
+    area: "CUSTOMER_SUCCESS",
+    ownerRole: "cs",
+    title: "Usage Score automatizado → acciones sobre score <70",
+    expectedImpact: "Intervención proactiva en clientes con bajo uso.",
+    displayOrder: 4,
+  },
+  {
+    area: "CUSTOMER_SUCCESS",
+    ownerRole: "cs",
+    title: "Detección de upselling en implementación y success",
+    expectedImpact: "Expansion MRR desde la cartera existente.",
+    displayOrder: 5,
+  },
+
+  // PRODUCTO — Glori
+  {
+    area: "PRODUCTO",
+    ownerRole: "product",
+    title: "Lanzar Control de Materiales + Centro de Pagos",
+    expectedImpact:
+      "Eliminar los 2 bloqueos principales en implementaciones activas.",
+    displayOrder: 1,
+  },
+  {
+    area: "PRODUCTO",
+    ownerRole: "product",
+    title: "Contratar PM senior",
+    expectedImpact: "Duplicar la capacidad de ejecución de producto.",
+    displayOrder: 2,
+  },
+  {
+    area: "PRODUCTO",
+    ownerRole: "product",
+    title: "Journey maps por tipo de cliente",
+    expectedImpact:
+      "Guía para definir dónde y cómo intervenir con experimentos.",
+    displayOrder: 3,
+  },
+  {
+    area: "PRODUCTO",
+    ownerRole: "product",
+    title: "Experimentos de usabilidad en flujos recurrentes",
+    expectedImpact:
+      "Que los clientes nuevos formen hábito en sus primeros 90d.",
+    displayOrder: 4,
+  },
+  {
+    area: "PRODUCTO",
+    ownerRole: "product",
+    title: "Sistema de feedback organizado",
+    expectedImpact:
+      "Decisiones de roadmap más informadas y más rápidas.",
+    displayOrder: 5,
+  },
+
+  // INGENIERÍA — Adrián
+  {
+    area: "INGENIERIA",
+    ownerRole: "engineering",
+    title: "Reducir bugs que llegan al cliente (causa raíz)",
+    expectedImpact:
+      "Baja el MRR en riesgo y reduce churn por calidad.",
+    displayOrder: 1,
+  },
+  {
+    area: "INGENIERIA",
+    ownerRole: "engineering",
+    title: "Reducir TTR con pre-análisis automático",
+    expectedImpact:
+      "Menor MTTR y menor tiempo de interrupción para clientes.",
+    displayOrder: 2,
+  },
+  {
+    area: "INGENIERIA",
+    ownerRole: "engineering",
+    title: "Reordenar proceso y medir impacto individual",
+    expectedImpact:
+      "Más trazabilidad, menos retrabajo, mejor calidad.",
+    displayOrder: 3,
+  },
+  {
+    area: "INGENIERIA",
+    ownerRole: "engineering",
+    title: "Sumar 1 developer + 1 QA/tester formalizado",
+    expectedImpact:
+      "Mayor capacidad, menos regresiones, menos dependencia crítica.",
+    displayOrder: 4,
+  },
+  {
+    area: "INGENIERIA",
+    ownerRole: "engineering",
+    title: "Automatizar alertas, diagnóstico y tickets Linear",
+    expectedImpact:
+      "Detección temprana y foco del equipo en causas raíz.",
+    displayOrder: 5,
+  },
+];
+
+const RISKS: RiskSeed[] = [
+  {
+    area: "COMERCIAL",
+    title: "Contratar mal",
+    description:
+      "Vendedores sin perfil outbound o sin conocimiento del sector alargan la curva y no cierran.",
+    displayOrder: 1,
+  },
+  {
+    area: "COMERCIAL",
+    title: "Ciclo de venta más largo por outbound",
+    description:
+      "El pipeline tarda más en madurar; presión sobre los números de corto plazo.",
+    displayOrder: 2,
+  },
+  {
+    area: "COMERCIAL",
+    title: "Churn supera la retención",
+    description:
+      "Si no se contiene la fuga del MRR, el esfuerzo comercial no se ve en el MRR neto.",
+    displayOrder: 3,
+  },
+
+  {
+    area: "CUSTOMER_SUCCESS",
+    title: "Datos PostHog inconsistentes",
+    description:
+      "Dashboards de uso a veces fallan; dependencia de soporte técnico para actualizarlos.",
+    displayOrder: 1,
+  },
+  {
+    area: "CUSTOMER_SUCCESS",
+    title: "Desalineación con ventas en CRM",
+    description:
+      "El equipo de ventas no sabe dónde encontrar información en Agency; fricción en el handoff.",
+    displayOrder: 2,
+  },
+  {
+    area: "CUSTOMER_SUCCESS",
+    title: "Sin proceso de escalamiento inter-áreas",
+    description:
+      "Cuando un cliente está en riesgo, no hay ruta clara hacia producto, ingeniería o ventas.",
+    displayOrder: 3,
+  },
+
+  {
+    area: "PRODUCTO",
+    title: "Señal poco clara en experimentos",
+    description:
+      "Difícil aislar el impacto de cada proyecto en los KPIs.",
+    displayOrder: 1,
+  },
+  {
+    area: "PRODUCTO",
+    title: "Deuda funcional más profunda de lo esperado",
+    description:
+      "Gaps en módulos fuera del roadmap con impacto negativo en clientes que hoy no tenemos identificados.",
+    displayOrder: 2,
+  },
+  {
+    area: "PRODUCTO",
+    title: "Factores externos en la implementación",
+    description:
+      "La disposición del cliente y su colaboración con CS está fuera de nuestro control.",
+    displayOrder: 3,
+  },
+
+  {
+    area: "INGENIERIA",
+    title: "El volumen de bugs no baja",
+    description:
+      "Si seguimos en ~85 bugs/mes, el equipo sigue en modo reactivo y no puede avanzar.",
+    displayOrder: 1,
+  },
+  {
+    area: "INGENIERIA",
+    title: "La capacidad nueva llega tarde o no se consolida",
+    description:
+      "El developer y QA necesitan incorporarse y aportar antes de Q4.",
+    displayOrder: 2,
+  },
+  {
+    area: "INGENIERIA",
+    title: "Brecha diseño-producto-implementación",
+    description:
+      "Funcionalidades llegan a desarrollo con gaps de diseño o requisitos incompletos → retrabajo y más bugs.",
+    displayOrder: 3,
   },
 ];
 
@@ -200,9 +1108,65 @@ export async function seedPlanH2() {
     data: { planId: plan.id },
   });
 
+  const ownersByRole = new Map<OwnerRole, string>();
+  for (const role of ["ceo", "sales", "cs", "product", "engineering"] as OwnerRole[]) {
+    const user = await prisma.user.findFirst({ where: { role } });
+    if (user) ownersByRole.set(role, user.id);
+  }
+
+  // Crear/actualizar Scorecard metrics que respaldan las KPIs de área.
+  // Se buscan por nombre porque no hay constraint único en el schema.
+  for (const metric of SCORECARD_METRICS) {
+    const ownerId = ownersByRole.get(metric.ownerRole);
+    if (!ownerId) {
+      console.warn(
+        `[seed:planH2] No user found for scorecard metric ${metric.name} (role=${metric.ownerRole})`
+      );
+      continue;
+    }
+    const existing = await prisma.scorecardMetric.findFirst({
+      where: { name: metric.name },
+    });
+    if (existing) {
+      await prisma.scorecardMetric.update({
+        where: { id: existing.id },
+        data: {
+          category: metric.category,
+          ownerId,
+          targetValue: metric.targetValue,
+          targetNumeric: metric.targetNumeric,
+          targetDirection: metric.targetDirection,
+          frequency: metric.frequency,
+          unit: metric.unit,
+          calculation: metric.calculation,
+          dataSource: metric.dataSource,
+          sortOrder: metric.sortOrder,
+          isActive: true,
+        },
+      });
+    } else {
+      await prisma.scorecardMetric.create({
+        data: {
+          name: metric.name,
+          category: metric.category,
+          ownerId,
+          targetValue: metric.targetValue,
+          targetNumeric: metric.targetNumeric,
+          targetDirection: metric.targetDirection,
+          frequency: metric.frequency,
+          unit: metric.unit,
+          calculation: metric.calculation,
+          dataSource: metric.dataSource,
+          sortOrder: metric.sortOrder,
+          isActive: true,
+        },
+      });
+    }
+  }
+
   for (const kpi of KPIS) {
-    const owner = await prisma.user.findFirst({ where: { role: kpi.ownerRole } });
-    if (!owner) {
+    const ownerId = ownersByRole.get(kpi.ownerRole);
+    if (!ownerId) {
       console.warn(`[seed:planH2] No user found with role=${kpi.ownerRole}; skipping ${kpi.slug}`);
       continue;
     }
@@ -212,28 +1176,32 @@ export async function seedPlanH2() {
       update: {
         name: kpi.name,
         category: kpi.category,
+        area: kpi.area,
         baseline: kpi.baseline,
         target: kpi.target,
         unit: kpi.unit,
         direction: kpi.direction,
-        ownerId: owner.id,
+        ownerId,
         sourceType: kpi.sourceType,
         sourceKey: kpi.sourceKey,
         displayOrder: kpi.displayOrder,
+        isPrincipal: kpi.isPrincipal,
       },
       create: {
         planId: plan.id,
         name: kpi.name,
         slug: kpi.slug,
         category: kpi.category,
+        area: kpi.area,
         baseline: kpi.baseline,
         target: kpi.target,
         unit: kpi.unit,
         direction: kpi.direction,
-        ownerId: owner.id,
+        ownerId,
         sourceType: kpi.sourceType,
         sourceKey: kpi.sourceKey,
         displayOrder: kpi.displayOrder,
+        isPrincipal: kpi.isPrincipal,
       },
     });
 
@@ -250,7 +1218,37 @@ export async function seedPlanH2() {
     }
   }
 
-  console.log(`[seed:planH2] Plan "${plan.name}" seeded with ${KPIS.length} KPIs.`);
+  await prisma.planAction.deleteMany({ where: { planId: plan.id } });
+  for (const action of ACTIONS) {
+    const ownerId = ownersByRole.get(action.ownerRole) ?? null;
+    await prisma.planAction.create({
+      data: {
+        planId: plan.id,
+        area: action.area,
+        ownerId,
+        title: action.title,
+        expectedImpact: action.expectedImpact,
+        displayOrder: action.displayOrder,
+      },
+    });
+  }
+
+  await prisma.planRisk.deleteMany({ where: { planId: plan.id } });
+  for (const risk of RISKS) {
+    await prisma.planRisk.create({
+      data: {
+        planId: plan.id,
+        area: risk.area,
+        title: risk.title,
+        description: risk.description,
+        displayOrder: risk.displayOrder,
+      },
+    });
+  }
+
+  console.log(
+    `[seed:planH2] Plan "${plan.name}" seeded with ${KPIS.length} KPIs, ${ACTIONS.length} actions, ${RISKS.length} risks.`
+  );
   return plan;
 }
 

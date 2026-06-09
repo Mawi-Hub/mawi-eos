@@ -26,6 +26,7 @@ model User {
   accountabilityRole AccountabilityRole?
   planKpisOwned     PlanKPI[]
   planProposals     PlanProposal[]
+  planActionsOwned  PlanAction[]
 
   @@map("users")
 }
@@ -255,6 +256,7 @@ enum KPISourceType {
   CHARTMOGUL
   HUBSPOT
   POSTHOG
+  SCORECARD
 
   @@map("kpi_source_type")
 }
@@ -276,6 +278,33 @@ enum MilestoneStatus {
   @@map("milestone_status")
 }
 
+enum PlanArea {
+  NORTH_STAR
+  COMERCIAL
+  CUSTOMER_SUCCESS
+  PRODUCTO
+  INGENIERIA
+
+  @@map("plan_area")
+}
+
+enum ActionStatus {
+  PLANNED
+  IN_PROGRESS
+  DONE
+  BLOCKED
+
+  @@map("action_status")
+}
+
+enum RiskStatus {
+  ACTIVE
+  MITIGATING
+  RESOLVED
+
+  @@map("risk_status")
+}
+
 model Plan {
   id        String     @id @default(uuid())
   name      String     @unique
@@ -289,6 +318,8 @@ model Plan {
   quarters  Quarter[]
   kpis      PlanKPI[]
   proposals PlanProposal[]
+  actions   PlanAction[]
+  risks     PlanRisk[]
 
   @@map("plans")
 }
@@ -299,6 +330,7 @@ model PlanKPI {
   name         String
   slug         String
   category     KPICategory
+  area         PlanArea      @default(NORTH_STAR)
   baseline     Float
   target       Float
   unit         String
@@ -307,6 +339,7 @@ model PlanKPI {
   sourceType   KPISourceType @default(MANUAL) @map("source_type")
   sourceKey    String?       @map("source_key")
   displayOrder Int           @default(0) @map("display_order")
+  isPrincipal  Boolean       @default(false) @map("is_principal")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
@@ -365,4 +398,39 @@ model ProposalMilestone {
   proposal PlanProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
 
   @@map("proposal_milestones")
+}
+
+model PlanAction {
+  id             String       @id @default(uuid())
+  planId         String       @map("plan_id")
+  area           PlanArea
+  ownerId        String?      @map("owner_id")
+  title          String
+  description    String?
+  expectedImpact String?      @map("expected_impact")
+  status         ActionStatus @default(PLANNED)
+  displayOrder   Int          @default(0) @map("display_order")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  plan  Plan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  owner User? @relation(fields: [ownerId], references: [id])
+
+  @@map("plan_actions")
+}
+
+model PlanRisk {
+  id           String     @id @default(uuid())
+  planId       String     @map("plan_id")
+  area         PlanArea
+  title        String
+  description  String?
+  status       RiskStatus @default(ACTIVE)
+  displayOrder Int        @default(0) @map("display_order")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("plan_risks")
 }
