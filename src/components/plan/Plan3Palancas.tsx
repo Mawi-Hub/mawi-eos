@@ -106,20 +106,6 @@ export function Plan3Palancas({
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-mawi-400/40 to-transparent" />
 
       <div className="relative">
-        {/* Eyebrow */}
-        <div className="mb-7 flex flex-wrap items-center justify-between gap-3 md:mb-9">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.35em] text-mawi-100/80">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            </span>
-            H2 2026 · Live
-          </div>
-          <div className="text-[10px] font-medium uppercase tracking-[0.3em] text-mawi-200/50">
-            Mawi · Plan de Crecimiento
-          </div>
-        </div>
-
         {/* Twin stats — countdown + NDR */}
         <div className="grid grid-cols-1 gap-8 md:grid-cols-[1fr_auto_1fr] md:items-end md:gap-10">
           {/* Days countdown */}
@@ -196,11 +182,11 @@ export function Plan3Palancas({
         </div>
 
         {/* Levers */}
-        <div className="mt-9 grid grid-cols-1 gap-3 md:mt-10 md:grid-cols-3">
+        <div className="mt-7 grid grid-cols-1 gap-2.5 md:mt-8 md:grid-cols-3">
           {LEVERS.map((lever) => (
             <div
               key={lever.n}
-              className={`group relative overflow-hidden rounded-xl border ${lever.border} bg-white/[0.03] p-4 backdrop-blur-sm transition hover:bg-white/[0.06]`}
+              className={`group relative overflow-hidden rounded-xl border ${lever.border} bg-white/[0.03] p-3.5 backdrop-blur-sm transition hover:bg-white/[0.06]`}
             >
               <div
                 className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent ${lever.accentLine} to-transparent`}
