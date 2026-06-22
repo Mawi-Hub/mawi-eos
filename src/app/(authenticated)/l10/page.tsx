@@ -30,66 +30,59 @@ export default async function L10Page() {
     return <div className="py-12 text-center text-gray-500">No hay trimestre activo.</div>;
   }
 
-  // Active meeting = most recent non-completed. Fall back to latest.
-  const meeting = await prisma.l10Meeting.findFirst({
-    where: { quarterId: activeQuarter.id, status: { not: "completed" } },
-    orderBy: { date: "desc" },
-    include: {
-      issues: {
-        include: {
-          raisedBy: true,
-          owner: true,
-          linkedRock: { select: { id: true, title: true } },
-          linkedMetric: { select: { id: true, name: true } },
-          votes: { select: { userId: true } },
+  // Fan out the independent reads in parallel so we hold fewer connections overall
+  const [meeting, pastMeetings, allMetrics, allActiveRocks, users] = await Promise.all([
+    prisma.l10Meeting.findFirst({
+      where: { quarterId: activeQuarter.id, status: { not: "completed" } },
+      orderBy: { date: "desc" },
+      include: {
+        issues: {
+          include: {
+            raisedBy: true,
+            owner: true,
+            linkedRock: { select: { id: true, title: true } },
+            linkedMetric: { select: { id: true, name: true } },
+            votes: { select: { userId: true } },
+          },
+          orderBy: { createdAt: "asc" },
         },
-        orderBy: { createdAt: "asc" },
+        commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
       },
-      commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
-    },
-  });
+    }),
+    prisma.l10Meeting.findMany({
+      where: { quarterId: activeQuarter.id, status: "completed" },
+      orderBy: { date: "desc" },
+      include: {
+        _count: { select: { issues: true, commitments: true } },
+        issues: { include: { owner: true }, where: { idsStatus: "resolved" }, orderBy: { createdAt: "asc" } },
+        commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
+      },
+    }),
+    prisma.scorecardMetric.findMany({
+      where: { isActive: true },
+      include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 5 } },
+      orderBy: [{ owner: { name: "asc" } }, { sortOrder: "asc" }],
+    }),
+    prisma.rock.findMany({
+      where: { quarterId: activeQuarter.id, finalStatus: null },
+      include: { owner: true },
+      orderBy: [{ owner: { name: "asc" } }, { createdAt: "asc" }],
+    }),
+    prisma.user.findMany({ orderBy: { name: "asc" } }),
+  ]);
 
-  // Past completed meetings for history
-  const pastMeetings = await prisma.l10Meeting.findMany({
-    where: { quarterId: activeQuarter.id, status: "completed" },
-    orderBy: { date: "desc" },
-    include: {
-      _count: { select: { issues: true, commitments: true } },
-      issues: { include: { owner: true }, where: { idsStatus: "resolved" }, orderBy: { createdAt: "asc" } },
-      commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
-    },
+  // Derive red metrics and off-track rocks from the bulk fetches above
+  const redMetrics = allMetrics.filter((m) => {
+    const status = m.entries[0]?.status;
+    return status === "off_track" || status === "riesgo";
   });
+  const offTrackRocks = allActiveRocks.filter((r) => r.status === "off_track" || r.status === "riesgo");
 
   // Cycle cutoff = when the last meeting was closed (falls back to 7 days ago — weekly cadence)
   const lastClosedMeeting = pastMeetings[0];
   const cycleStart = lastClosedMeeting
     ? new Date(lastClosedMeeting.updatedAt)
     : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-  // 1. Wins for current cycle grouped by user
-  const recentWins = await prisma.winChallenge.findMany({
-    where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: cycleStart } },
-    include: { user: true },
-    orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
-  });
-
-  // Red metrics (fetch last 5 entries to detect "weeks red" streaks)
-  const allMetrics = await prisma.scorecardMetric.findMany({
-    where: { isActive: true },
-    include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 5 } },
-    orderBy: [{ owner: { name: "asc" } }, { sortOrder: "asc" }],
-  });
-  const redMetrics = allMetrics.filter((m) => {
-    const status = m.entries[0]?.status;
-    return status === "off_track" || status === "riesgo";
-  });
-
-  // Off-track rocks
-  const offTrackRocks = await prisma.rock.findMany({
-    where: { quarterId: activeQuarter.id, status: { in: ["off_track", "riesgo"] }, finalStatus: null },
-    include: { owner: true },
-    orderBy: [{ owner: { name: "asc" } }, { createdAt: "asc" }],
-  });
 
   // "Weeks red" streak per metric: count leading entries that are off_track/riesgo
   const redStreakByMetric = new Map<string, number>();
@@ -103,13 +96,39 @@ export default async function L10Page() {
   }
   const CHRONIC_RED_THRESHOLD = 4;
 
-  // Coverage: every red metric + every off-track rock must be amarrado a algo
-  const coverages = meeting
-    ? await prisma.l10Coverage.findMany({
-        where: { meetingId: meeting.id },
-        include: { issue: { select: { id: true, title: true } } },
-      })
-    : [];
+  // Second wave: queries that depend on meeting/cycleStart. Parallel again.
+  const [recentWins, recentChallenges, coverages, preReadReads, annotationsRaw] = await Promise.all([
+    prisma.winChallenge.findMany({
+      where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: cycleStart } },
+      include: { user: true },
+      orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
+    }),
+    prisma.winChallenge.findMany({
+      where: { quarterId: activeQuarter.id, entryType: "challenge", reportDate: { gte: cycleStart } },
+      include: { user: true },
+      orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
+    }),
+    meeting
+      ? prisma.l10Coverage.findMany({
+          where: { meetingId: meeting.id },
+          include: { issue: { select: { id: true, title: true } } },
+        })
+      : Promise.resolve([] as never[]),
+    meeting
+      ? prisma.l10PreReadRead.findMany({
+          where: { meetingId: meeting.id },
+          select: { userId: true },
+        })
+      : Promise.resolve([] as Array<{ userId: string }>),
+    meeting
+      ? prisma.l10Annotation.findMany({
+          where: { meetingId: meeting.id },
+          include: { author: { select: { id: true, name: true } } },
+          orderBy: { createdAt: "asc" },
+        })
+      : Promise.resolve([] as never[]),
+  ]);
+
   const coverageBySource = new Map<string, (typeof coverages)[number]>();
   for (const c of coverages) coverageBySource.set(`${c.sourceType}:${c.sourceId}`, c);
 
@@ -156,13 +175,6 @@ export default async function L10Page() {
     ? meeting.issues.map((i) => ({ id: i.id, title: i.title }))
     : [];
 
-  // 4. Current cycle challenges
-  const recentChallenges = await prisma.winChallenge.findMany({
-    where: { quarterId: activeQuarter.id, entryType: "challenge", reportDate: { gte: cycleStart } },
-    include: { user: true },
-    orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
-  });
-
   // Group wins by user
   const winsByUser: Record<string, typeof recentWins> = {};
   for (const w of recentWins) {
@@ -171,19 +183,9 @@ export default async function L10Page() {
     winsByUser[name].push(w);
   }
 
-  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-
-  // Rocks + Metrics for issue link selectors (active quarter / active metrics)
-  const allActiveRocks = await prisma.rock.findMany({
-    where: { quarterId: activeQuarter.id, finalStatus: null },
-    select: { id: true, title: true },
-    orderBy: { createdAt: "asc" },
-  });
-  const allActiveMetrics = await prisma.scorecardMetric.findMany({
-    where: { isActive: true },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  // Issue link selector options derived from bulk fetches above
+  const rockOptions = allActiveRocks.map((r) => ({ id: r.id, title: r.title }));
+  const metricOptions = allMetrics.map((m) => ({ id: m.id, name: m.name }));
 
   // How many issues current user has already raised in this meeting
   const userIssueCount = meeting && session?.user?.id
@@ -198,24 +200,10 @@ export default async function L10Page() {
       : meeting.issues
     : [];
 
-  // Pre-read read tracking
-  const preReadReads = meeting
-    ? await prisma.l10PreReadRead.findMany({
-        where: { meetingId: meeting.id },
-        include: { user: { select: { id: true, name: true } } },
-      })
-    : [];
+  // Pre-read read tracking + annotations indexes
   const readUserIds = new Set(preReadReads.map((r) => r.userId));
   const currentUserRead = session?.user?.id ? readUserIds.has(session.user.id) : false;
 
-  // Annotations indexed by (targetType:targetId)
-  const annotationsRaw = meeting
-    ? await prisma.l10Annotation.findMany({
-        where: { meetingId: meeting.id },
-        include: { author: { select: { id: true, name: true } } },
-        orderBy: { createdAt: "asc" },
-      })
-    : [];
   const annotationsByTarget = new Map<
     string,
     Array<{ id: string; authorName: string; authorId: string; tag: string; comment: string; resolvedAt: string | null; createdAt: string }>
@@ -250,11 +238,11 @@ export default async function L10Page() {
       </div>
 
       {meeting && (
-        <div className="space-y-3 rounded-lg bg-mawi-50 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm text-mawi-700">
-              Reunión activa: {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
-              <span className="ml-2 rounded-full bg-mawi-100 px-2 py-0.5 text-xs font-medium capitalize">{meeting.status}</span>
+        <div className="space-y-4 rounded-lg bg-mawi-50 px-5 py-4">
+          {/* Row 1: meeting label + primary actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-medium text-mawi-800">
+              Reunión {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
             </div>
             <div className="flex items-center gap-2">
               <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
@@ -263,28 +251,32 @@ export default async function L10Page() {
               )}
             </div>
           </div>
-          <PhaseControl
-            meetingId={meeting.id}
-            currentPhase={meeting.phase}
-            prereadDeadline={meeting.prereadDeadline ? meeting.prereadDeadline.toISOString() : null}
-            canEdit={isCeo}
-          />
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wide text-mawi-600">
-              Leído {readUserIds.size}/{users.length}:
-            </span>
-            {users.map((u) => {
-              const read = readUserIds.has(u.id);
-              return (
-                <span
-                  key={u.id}
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${read ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}
-                  title={read ? "Leído" : "Pendiente"}
-                >
-                  {read ? "✓" : "•"} {u.name.split(" ")[0]}
-                </span>
-              );
-            })}
+
+          {/* Row 2: phase pills */}
+          <div>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-mawi-600">Fase</div>
+            <PhaseControl meetingId={meeting.id} currentPhase={meeting.phase} canEdit={isCeo} />
+          </div>
+
+          {/* Row 3: read tracker */}
+          <div>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-mawi-600">
+              Pre-read leído {readUserIds.size}/{users.length}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {users.map((u) => {
+                const read = readUserIds.has(u.id);
+                return (
+                  <span
+                    key={u.id}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${read ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}
+                    title={read ? "Leído" : "Pendiente"}
+                  >
+                    {read ? "✓" : "•"} {u.name.split(" ")[0]}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -443,8 +435,8 @@ export default async function L10Page() {
                   <AddIssueButton
                     meetingId={meeting.id}
                     users={users}
-                    rocks={allActiveRocks}
-                    metrics={allActiveMetrics}
+                    rocks={rockOptions}
+                    metrics={metricOptions}
                     remaining={remainingIssues}
                   />
                 )}
