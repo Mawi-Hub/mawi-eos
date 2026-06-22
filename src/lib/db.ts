@@ -6,10 +6,11 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 function createPrismaClient() {
   const adapter = new PrismaPg({
     connectionString: process.env.DATABASE_URL!,
-    // Cap connections per instance — Supabase pgbouncer has a global ceiling
-    // and Vercel can spin up many concurrent instances under load.
-    max: 3,
-    idleTimeoutMillis: 10_000,
+    // One connection per instance. Vercel can spawn many concurrent instances
+    // and the Supabase pgbouncer ceiling is shared; if we let each instance
+    // open even 2–3 we hit EMAXCONNS under load.
+    max: 1,
+    idleTimeoutMillis: 5_000,
   });
   return new PrismaClient({ adapter });
 }

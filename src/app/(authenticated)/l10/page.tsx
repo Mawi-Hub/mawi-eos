@@ -183,9 +183,13 @@ export default async function L10Page() {
     winsByUser[name].push(w);
   }
 
-  // Issue link selector options derived from bulk fetches above
-  const rockOptions = allActiveRocks.map((r) => ({ id: r.id, title: r.title }));
-  const metricOptions = allMetrics.map((m) => ({ id: m.id, name: m.name }));
+  // Issue link selector options — only the current user's own rocks and metrics
+  const rockOptions = session?.user?.id
+    ? allActiveRocks.filter((r) => r.ownerId === session.user!.id).map((r) => ({ id: r.id, title: r.title }))
+    : [];
+  const metricOptions = session?.user?.id
+    ? allMetrics.filter((m) => m.ownerId === session.user!.id).map((m) => ({ id: m.id, name: m.name }))
+    : [];
 
   // How many issues current user has already raised in this meeting
   const userIssueCount = meeting && session?.user?.id
