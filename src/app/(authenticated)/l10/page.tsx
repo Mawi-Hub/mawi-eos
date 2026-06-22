@@ -9,6 +9,11 @@ import { ToggleCommitmentButton } from "./toggle-commitment-button";
 import EditIssueButton from "./edit-issue-button";
 import EditCommitmentButton from "./edit-commitment-button";
 import CloseMeetingButton from "./close-meeting-button";
+import { SetCoverageButton } from "./set-coverage-button";
+import { MarkAsReadButton } from "./mark-as-read-button";
+import { AnnotateButton } from "./annotate-button";
+import { VoteButton } from "./vote-button";
+import { PhaseControl } from "./phase-control";
 
 const IDS_LABELS: Record<string, { label: string; color: string }> = {
   identify: { label: "Identify", color: "bg-yellow-100 text-yellow-800" },
@@ -30,7 +35,16 @@ export default async function L10Page() {
     where: { quarterId: activeQuarter.id, status: { not: "completed" } },
     orderBy: { date: "desc" },
     include: {
-      issues: { include: { raisedBy: true, owner: true }, orderBy: { createdAt: "asc" } },
+      issues: {
+        include: {
+          raisedBy: true,
+          owner: true,
+          linkedRock: { select: { id: true, title: true } },
+          linkedMetric: { select: { id: true, name: true } },
+          votes: { select: { userId: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
       commitments: { include: { owner: true }, orderBy: { createdAt: "asc" } },
     },
   });
@@ -46,11 +60,11 @@ export default async function L10Page() {
     },
   });
 
-  // Cycle cutoff = when the last meeting was closed (falls back to 14 days ago)
+  // Cycle cutoff = when the last meeting was closed (falls back to 7 days ago — weekly cadence)
   const lastClosedMeeting = pastMeetings[0];
   const cycleStart = lastClosedMeeting
     ? new Date(lastClosedMeeting.updatedAt)
-    : new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   // 1. Wins for current cycle grouped by user
   const recentWins = await prisma.winChallenge.findMany({
@@ -59,10 +73,10 @@ export default async function L10Page() {
     orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
   });
 
-  // 2. Red scorecards grouped by owner
+  // Red metrics (fetch last 5 entries to detect "weeks red" streaks)
   const allMetrics = await prisma.scorecardMetric.findMany({
     where: { isActive: true },
-    include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 1 } },
+    include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 5 } },
     orderBy: [{ owner: { name: "asc" } }, { sortOrder: "asc" }],
   });
   const redMetrics = allMetrics.filter((m) => {
@@ -70,27 +84,77 @@ export default async function L10Page() {
     return status === "off_track" || status === "riesgo";
   });
 
-  // Group red metrics by owner
-  const redByOwner: Record<string, typeof redMetrics> = {};
-  for (const m of redMetrics) {
-    const name = m.owner.name;
-    if (!redByOwner[name]) redByOwner[name] = [];
-    redByOwner[name].push(m);
-  }
-
-  // 3. Off-track rocks grouped by owner
+  // Off-track rocks
   const offTrackRocks = await prisma.rock.findMany({
     where: { quarterId: activeQuarter.id, status: { in: ["off_track", "riesgo"] }, finalStatus: null },
     include: { owner: true },
     orderBy: [{ owner: { name: "asc" } }, { createdAt: "asc" }],
   });
 
-  const rocksByOwner: Record<string, typeof offTrackRocks> = {};
-  for (const r of offTrackRocks) {
-    const name = r.owner.name;
-    if (!rocksByOwner[name]) rocksByOwner[name] = [];
-    rocksByOwner[name].push(r);
+  // "Weeks red" streak per metric: count leading entries that are off_track/riesgo
+  const redStreakByMetric = new Map<string, number>();
+  for (const m of redMetrics) {
+    let streak = 0;
+    for (const e of m.entries) {
+      if (e.status === "off_track" || e.status === "riesgo") streak++;
+      else break;
+    }
+    redStreakByMetric.set(m.id, streak);
   }
+  const CHRONIC_RED_THRESHOLD = 4;
+
+  // Coverage: every red metric + every off-track rock must be amarrado a algo
+  const coverages = meeting
+    ? await prisma.l10Coverage.findMany({
+        where: { meetingId: meeting.id },
+        include: { issue: { select: { id: true, title: true } } },
+      })
+    : [];
+  const coverageBySource = new Map<string, (typeof coverages)[number]>();
+  for (const c of coverages) coverageBySource.set(`${c.sourceType}:${c.sourceId}`, c);
+
+  const coverageRows: Array<{
+    key: string;
+    sourceType: "metric" | "rock";
+    sourceId: string;
+    label: string;
+    ownerName: string;
+    statusBadge: { label: string; className: string };
+    coverage: (typeof coverages)[number] | null;
+    chronicWeeks: number | null;
+  }> = [];
+  for (const m of redMetrics) {
+    const entry = m.entries[0];
+    const cfg = STATUS_CONFIG[entry?.status || "pending"];
+    const streak = redStreakByMetric.get(m.id) || 0;
+    coverageRows.push({
+      key: `metric:${m.id}`,
+      sourceType: "metric",
+      sourceId: m.id,
+      label: m.name,
+      ownerName: m.owner.name,
+      statusBadge: cfg,
+      coverage: coverageBySource.get(`metric:${m.id}`) || null,
+      chronicWeeks: streak >= CHRONIC_RED_THRESHOLD ? streak : null,
+    });
+  }
+  for (const r of offTrackRocks) {
+    const cfg = STATUS_CONFIG[r.status];
+    coverageRows.push({
+      key: `rock:${r.id}`,
+      sourceType: "rock",
+      sourceId: r.id,
+      label: r.title,
+      ownerName: r.owner.name,
+      statusBadge: cfg,
+      coverage: coverageBySource.get(`rock:${r.id}`) || null,
+      chronicWeeks: null,
+    });
+  }
+  const orphanCount = coverageRows.filter((r) => !r.coverage).length;
+  const issueOptions = meeting
+    ? meeting.issues.map((i) => ({ id: i.id, title: i.title }))
+    : [];
 
   // 4. Current cycle challenges
   const recentChallenges = await prisma.winChallenge.findMany({
@@ -109,27 +173,119 @@ export default async function L10Page() {
 
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
 
+  // Rocks + Metrics for issue link selectors (active quarter / active metrics)
+  const allActiveRocks = await prisma.rock.findMany({
+    where: { quarterId: activeQuarter.id, finalStatus: null },
+    select: { id: true, title: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const allActiveMetrics = await prisma.scorecardMetric.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+
+  // How many issues current user has already raised in this meeting
+  const userIssueCount = meeting && session?.user?.id
+    ? meeting.issues.filter((i) => i.raisedById === session.user!.id).length
+    : 0;
+  const remainingIssues = Math.max(0, 3 - userIssueCount);
+
+  // Sort issues by vote count desc when in voting/ids phase
+  const sortedIssues = meeting
+    ? (meeting.phase === "voting" || meeting.phase === "ids")
+      ? [...meeting.issues].sort((a, b) => b.votes.length - a.votes.length)
+      : meeting.issues
+    : [];
+
+  // Pre-read read tracking
+  const preReadReads = meeting
+    ? await prisma.l10PreReadRead.findMany({
+        where: { meetingId: meeting.id },
+        include: { user: { select: { id: true, name: true } } },
+      })
+    : [];
+  const readUserIds = new Set(preReadReads.map((r) => r.userId));
+  const currentUserRead = session?.user?.id ? readUserIds.has(session.user.id) : false;
+
+  // Annotations indexed by (targetType:targetId)
+  const annotationsRaw = meeting
+    ? await prisma.l10Annotation.findMany({
+        where: { meetingId: meeting.id },
+        include: { author: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const annotationsByTarget = new Map<
+    string,
+    Array<{ id: string; authorName: string; authorId: string; tag: string; comment: string; resolvedAt: string | null; createdAt: string }>
+  >();
+  for (const a of annotationsRaw) {
+    const key = `${a.targetType}:${a.targetId}`;
+    if (!annotationsByTarget.has(key)) annotationsByTarget.set(key, []);
+    annotationsByTarget.get(key)!.push({
+      id: a.id,
+      authorName: a.author.name,
+      authorId: a.author.id,
+      tag: a.tag,
+      comment: a.comment,
+      resolvedAt: a.resolvedAt ? a.resolvedAt.toISOString() : null,
+      createdAt: a.createdAt.toISOString(),
+    });
+  }
+  const getAnnos = (type: string, id: string) => annotationsByTarget.get(`${type}:${id}`) || [];
+  const isCeo = session?.user?.role === "ceo";
+  const currentUserId = session?.user?.id || "";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">L10 Meeting</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Preparación bisemanal — Q{activeQuarter.quarter} {activeQuarter.year}
+            Preparación semanal — Q{activeQuarter.quarter} {activeQuarter.year}
           </p>
         </div>
         {session?.user?.role === "ceo" && <CreateMeetingButton quarterId={activeQuarter.id} />}
       </div>
 
       {meeting && (
-        <div className="flex items-center justify-between rounded-lg bg-mawi-50 px-4 py-2">
-          <div className="text-sm text-mawi-700">
-            Reunión activa: {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
-            <span className="ml-2 rounded-full bg-mawi-100 px-2 py-0.5 text-xs font-medium capitalize">{meeting.status}</span>
+        <div className="space-y-3 rounded-lg bg-mawi-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm text-mawi-700">
+              Reunión activa: {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
+              <span className="ml-2 rounded-full bg-mawi-100 px-2 py-0.5 text-xs font-medium capitalize">{meeting.status}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
+              {session?.user?.role === "ceo" && (
+                <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
+              )}
+            </div>
           </div>
-          {session?.user?.role === "ceo" && (
-            <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
-          )}
+          <PhaseControl
+            meetingId={meeting.id}
+            currentPhase={meeting.phase}
+            prereadDeadline={meeting.prereadDeadline ? meeting.prereadDeadline.toISOString() : null}
+            canEdit={isCeo}
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wide text-mawi-600">
+              Leído {readUserIds.size}/{users.length}:
+            </span>
+            {users.map((u) => {
+              const read = readUserIds.has(u.id);
+              return (
+                <span
+                  key={u.id}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${read ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}
+                  title={read ? "Leído" : "Pendiente"}
+                >
+                  {read ? "✓" : "•"} {u.name.split(" ")[0]}
+                </span>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -142,7 +298,7 @@ export default async function L10Page() {
               <div className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">1</div>
                 <h2 className="text-sm font-semibold text-gray-900">Wins</h2>
-                <span className="text-xs text-gray-400">10 min — 1 win por líder</span>
+                <span className="text-xs text-gray-400">Pre-read · 1 win por líder</span>
               </div>
             </div>
             <div className="px-5">
@@ -153,9 +309,22 @@ export default async function L10Page() {
                   <div key={userName} className="border-b border-gray-50 py-3 last:border-0">
                     <div className="mb-1 text-xs font-semibold text-mawi-700">{userName}</div>
                     {wins.map((w) => (
-                      <div key={w.id} className="mt-1.5">
-                        <p className="text-sm text-gray-700">{w.wins}</p>
-                        {w.result && <p className="mt-0.5 text-xs font-medium text-emerald-600">{w.result}</p>}
+                      <div key={w.id} className="mt-1.5 flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-700">{w.wins}</p>
+                          {w.result && <p className="mt-0.5 text-xs font-medium text-emerald-600">{w.result}</p>}
+                        </div>
+                        {meeting && (
+                          <AnnotateButton
+                            meetingId={meeting.id}
+                            targetType="win"
+                            targetId={w.id}
+                            targetLabel={`Win · ${userName}`}
+                            currentUserId={currentUserId}
+                            isCeo={isCeo}
+                            annotations={getAnnos("win", w.id)}
+                          />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -164,88 +333,99 @@ export default async function L10Page() {
             </div>
           </section>
 
-          {/* 2. Scorecard Rojos — grouped by person */}
+          {/* Cobertura — toda métrica roja y rock off-track debe estar amarrado a un issue o llevar nota */}
           <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-xs font-bold text-red-700">2</div>
-                <h2 className="text-sm font-semibold text-gray-900">Scorecard — Solo rojos</h2>
-                <span className="text-xs text-gray-400">10 min</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">2</div>
+                  <h2 className="text-sm font-semibold text-gray-900">Cobertura</h2>
+                  <span className="text-xs text-gray-400">Pre-read · cada rojo / off-track debe estar amarrado</span>
+                </div>
+                {coverageRows.length > 0 && (
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${orphanCount > 0 ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}`}>
+                    {orphanCount > 0 ? `${orphanCount} sin amarrar` : "Todo amarrado"}
+                  </span>
+                )}
               </div>
             </div>
             <div className="px-5">
-              {Object.keys(redByOwner).length === 0 ? (
-                <p className="py-4 text-sm text-emerald-600">Todas las métricas en verde</p>
+              {coverageRows.length === 0 ? (
+                <p className="py-4 text-sm text-emerald-600">No hay rojos ni rocks off-track</p>
               ) : (
-                Object.entries(redByOwner).map(([ownerName, metrics]) => (
-                  <div key={ownerName} className="border-b border-gray-50 py-3 last:border-0">
-                    <div className="mb-2 text-xs font-semibold text-mawi-700">{ownerName}</div>
-                    {metrics.map((m) => {
-                      const entry = m.entries[0];
-                      const cfg = STATUS_CONFIG[entry?.status || "pending"];
-                      return (
-                        <div key={m.id} className="flex items-center justify-between py-1.5">
-                          <span className="text-sm text-gray-900">{m.name}</span>
+                <div className="divide-y divide-gray-50">
+                  {coverageRows.map((row) => (
+                    <div key={row.key} className="py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-700">{entry?.actualDisplay || entry?.actualValue || "—"}</span>
-                            <span className="text-xs text-gray-400">/ {m.targetValue}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}>{cfg.label}</span>
-                            {entry?.updatedAt && (
-                              <span className="text-[10px] text-gray-300">
-                                {new Date(entry.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })}
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                              {row.sourceType === "metric" ? "Métrica" : "Rock"}
+                            </span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${row.statusBadge.className}`}>
+                              {row.statusBadge.label}
+                            </span>
+                            <span className="text-[10px] text-mawi-700">{row.ownerName}</span>
+                            {row.chronicWeeks && (
+                              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white" title="Métrica en rojo varias semanas seguidas">
+                                ⚠ {row.chronicWeeks} sem en rojo
                               </span>
                             )}
                           </div>
+                          <div className="mt-1 text-sm text-gray-900">{row.label}</div>
+                          {row.coverage && (
+                            <div className="mt-1.5 rounded bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
+                              {row.coverage.coverageType === "linked_issue" ? (
+                                <span>
+                                  <span className="font-medium text-mawi-700">→ Issue:</span>{" "}
+                                  {row.coverage.issue?.title || "(eliminado)"}
+                                </span>
+                              ) : (
+                                <span>
+                                  <span className="font-medium text-amber-700">No action:</span> {row.coverage.note}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                ))
+                        {meeting && (
+                          <div className="flex items-start gap-1.5">
+                            <AnnotateButton
+                              meetingId={meeting.id}
+                              targetType={row.sourceType}
+                              targetId={row.sourceId}
+                              targetLabel={`${row.sourceType === "metric" ? "Métrica" : "Rock"} · ${row.label}`}
+                              currentUserId={currentUserId}
+                              isCeo={isCeo}
+                              annotations={getAnnos(row.sourceType, row.sourceId)}
+                            />
+                            <SetCoverageButton
+                              meetingId={meeting.id}
+                              sourceType={row.sourceType}
+                              sourceId={row.sourceId}
+                              sourceLabel={`${row.sourceType === "metric" ? "Métrica" : "Rock"} · ${row.label}`}
+                              issues={issueOptions}
+                              existing={
+                                row.coverage
+                                  ? {
+                                      id: row.coverage.id,
+                                      coverageType: row.coverage.coverageType,
+                                      issueId: row.coverage.issueId,
+                                      note: row.coverage.note,
+                                    }
+                                  : null
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </section>
 
-          {/* 3. Rocks Off Track — grouped by person */}
-          <section className="rounded-lg border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-5 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">3</div>
-                <h2 className="text-sm font-semibold text-gray-900">Rocks — Solo Off Track</h2>
-                <span className="text-xs text-gray-400">10 min</span>
-              </div>
-            </div>
-            <div className="px-5">
-              {Object.keys(rocksByOwner).length === 0 ? (
-                <p className="py-4 text-sm text-emerald-600">Todos los rocks on track</p>
-              ) : (
-                Object.entries(rocksByOwner).map(([ownerName, rocks]) => (
-                  <div key={ownerName} className="border-b border-gray-50 py-3 last:border-0">
-                    <div className="mb-2 text-xs font-semibold text-mawi-700">{ownerName}</div>
-                    {rocks.map((r) => {
-                      const cfg = STATUS_CONFIG[r.status];
-                      return (
-                        <div key={r.id} className="py-1.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-gray-900">{r.title}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cfg.className}`}>{cfg.label}</span>
-                              <span className="text-[10px] text-gray-300">
-                                {new Date(r.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })}
-                              </span>
-                            </div>
-                          </div>
-                          {r.risk && <p className="mt-0.5 text-xs text-amber-600">Riesgo: {r.risk}</p>}
-                          <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
-                            <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${r.progress}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
         </div>
 
         {/* Column 2 */}
@@ -255,11 +435,19 @@ export default async function L10Page() {
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-mawi-100 text-xs font-bold text-mawi-700">4</div>
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-mawi-100 text-xs font-bold text-mawi-700">3</div>
                   <h2 className="text-sm font-semibold text-gray-900">Issues — IDS</h2>
-                  <span className="text-xs text-gray-400">50 min</span>
+                  <span className="text-xs text-gray-400">Reu · 5 min voto + 45 min IDS · máx 3 por persona</span>
                 </div>
-                {meeting && <AddIssueButton meetingId={meeting.id} users={users} />}
+                {meeting && (
+                  <AddIssueButton
+                    meetingId={meeting.id}
+                    users={users}
+                    rocks={allActiveRocks}
+                    metrics={allActiveMetrics}
+                    remaining={remainingIssues}
+                  />
+                )}
               </div>
             </div>
             <div className="px-5">
@@ -267,10 +455,23 @@ export default async function L10Page() {
                 <div className="border-b border-gray-100 py-3">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Pre-work (challenges recientes)</div>
                   {recentChallenges.map((c) => (
-                    <div key={c.id} className="mt-2 rounded bg-amber-50 px-3 py-2 text-xs">
-                      <span className="font-medium text-gray-900">{c.user.name}:</span>{" "}
-                      <span className="text-gray-700">{c.keyChallenge}</span>
-                      {c.followUpAction && <div className="mt-1 text-amber-700">Action: {c.followUpAction}</div>}
+                    <div key={c.id} className="mt-2 flex items-start justify-between gap-2 rounded bg-amber-50 px-3 py-2 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium text-gray-900">{c.user.name}:</span>{" "}
+                        <span className="text-gray-700">{c.keyChallenge}</span>
+                        {c.followUpAction && <div className="mt-1 text-amber-700">Action: {c.followUpAction}</div>}
+                      </div>
+                      {meeting && (
+                        <AnnotateButton
+                          meetingId={meeting.id}
+                          targetType="challenge"
+                          targetId={c.id}
+                          targetLabel={`Challenge · ${c.user.name}`}
+                          currentUserId={currentUserId}
+                          isCeo={isCeo}
+                          annotations={getAnnos("challenge", c.id)}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -278,18 +479,31 @@ export default async function L10Page() {
 
               {!meeting ? (
                 <p className="py-4 text-sm text-gray-400">Crea una reunión para agregar issues</p>
-              ) : meeting.issues.length === 0 ? (
+              ) : sortedIssues.length === 0 ? (
                 <p className="py-4 text-sm text-gray-400">Sin issues. Agrega uno para empezar IDS.</p>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  {meeting.issues.map((issue) => {
+                  {sortedIssues.map((issue) => {
                     const idsCfg = IDS_LABELS[issue.idsStatus] || IDS_LABELS.identify;
                     const priCfg = PRIORITY_CONFIG[issue.priority] || PRIORITY_CONFIG.medio;
+                    const userVoted = issue.votes.some((v) => v.userId === currentUserId);
+                    const voteDisabled = meeting.phase === "closed" || meeting.phase === "preread";
+                    const linkLabel = issue.linkedRock
+                      ? `Rock · ${issue.linkedRock.title}`
+                      : issue.linkedMetric
+                        ? `Métrica · ${issue.linkedMetric.name}`
+                        : null;
                     return (
                       <div key={issue.id} className={`py-3 ${issue.idsStatus === "resolved" ? "opacity-60" : ""}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-900">{issue.title}</span>
-                          <div className="flex items-center gap-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-sm font-medium text-gray-900">{issue.title}</span>
+                            {linkLabel && (
+                              <div className="mt-0.5 text-[11px] text-mawi-600">↳ {linkLabel}</div>
+                            )}
+                          </div>
+                          <div className="flex flex-shrink-0 items-center gap-1.5">
+                            <VoteButton issueId={issue.id} voted={userVoted} count={issue.votes.length} disabled={voteDisabled} />
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${priCfg.className}`}>{priCfg.label}</span>
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${idsCfg.color}`}>{idsCfg.label}</span>
                           </div>
@@ -333,9 +547,9 @@ export default async function L10Page() {
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-700">5</div>
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-700">4</div>
                   <h2 className="text-sm font-semibold text-gray-900">Compromisos</h2>
-                  <span className="text-xs text-gray-400">3–5 min</span>
+                  <span className="text-xs text-gray-400">Reu · 5 min en voz alta</span>
                 </div>
                 {meeting && <AddCommitmentButton meetingId={meeting.id} users={users} />}
               </div>

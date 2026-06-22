@@ -27,6 +27,11 @@ model User {
   planKpisOwned     PlanKPI[]
   planProposals     PlanProposal[]
   planActionsOwned  PlanAction[]
+  preReadReads        L10PreReadRead[]
+  annotationsAuthored L10Annotation[]  @relation("annotationsAuthored")
+  annotationsResolved L10Annotation[]  @relation("annotationsResolved")
+  issueVotes          L10IssueVote[]
+  coveragesCreated    L10Coverage[]
 
   @@map("users")
 }
@@ -68,8 +73,9 @@ model ScorecardMetric {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  owner   User             @relation(fields: [ownerId], references: [id])
-  entries ScorecardEntry[]
+  owner        User             @relation(fields: [ownerId], references: [id])
+  entries      ScorecardEntry[]
+  linkedIssues L10Issue[]       @relation("issuesLinkedMetric")
 
   @@map("scorecard_metrics")
 }
@@ -112,8 +118,9 @@ model Rock {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  quarter Quarter @relation(fields: [quarterId], references: [id])
-  owner   User    @relation(fields: [ownerId], references: [id])
+  quarter      Quarter    @relation(fields: [quarterId], references: [id])
+  owner        User       @relation(fields: [ownerId], references: [id])
+  linkedIssues L10Issue[] @relation("issuesLinkedRock")
 
   @@map("rocks")
 }
@@ -139,38 +146,50 @@ model WinChallenge {
 }
 
 model L10Meeting {
-  id        String   @id @default(uuid())
-  quarterId String   @map("quarter_id")
-  date      DateTime
-  status    String   @default("upcoming") // upcoming, in_progress, completed
-  notes     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String    @id @default(uuid())
+  quarterId       String    @map("quarter_id")
+  date            DateTime
+  status          String    @default("upcoming") // upcoming, in_progress, completed
+  phase           String    @default("preread") // preread, voting, ids, commitments, closed
+  prereadDeadline DateTime? @map("preread_deadline")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  quarter     Quarter      @relation(fields: [quarterId], references: [id])
-  issues      L10Issue[]
-  commitments L10Commitment[]
+  quarter      Quarter          @relation(fields: [quarterId], references: [id])
+  issues       L10Issue[]
+  commitments  L10Commitment[]
+  preReadReads L10PreReadRead[]
+  annotations  L10Annotation[]
+  coverages    L10Coverage[]
 
   @@map("l10_meetings")
 }
 
 model L10Issue {
-  id          String   @id @default(uuid())
-  meetingId   String   @map("meeting_id")
-  raisedById  String   @map("raised_by_id")
-  title       String
-  description String?
-  priority    String   @default("medio") // alto, medio, bajo
-  idsStatus   String   @default("identify") @map("ids_status") // identify, discuss, solve, resolved
-  resolution  String?
-  ownerId     String?  @map("owner_id")
-  dueDate     DateTime? @map("due_date")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  meetingId      String    @map("meeting_id")
+  raisedById     String    @map("raised_by_id")
+  title          String
+  description    String?
+  priority       String    @default("medio") // alto, medio, bajo
+  idsStatus      String    @default("identify") @map("ids_status") // identify, discuss, solve, resolved
+  resolution     String?
+  ownerId        String?   @map("owner_id")
+  dueDate        DateTime? @map("due_date")
+  linkedRockId   String?   @map("linked_rock_id")
+  linkedMetricId String?   @map("linked_metric_id")
+  submittedAt    DateTime? @map("submitted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  meeting  L10Meeting @relation(fields: [meetingId], references: [id])
-  raisedBy User       @relation("issuesRaised", fields: [raisedById], references: [id])
-  owner    User?      @relation("issuesOwned", fields: [ownerId], references: [id])
+  meeting      L10Meeting       @relation(fields: [meetingId], references: [id])
+  raisedBy     User             @relation("issuesRaised", fields: [raisedById], references: [id])
+  owner        User?            @relation("issuesOwned", fields: [ownerId], references: [id])
+  linkedRock   Rock?            @relation("issuesLinkedRock", fields: [linkedRockId], references: [id])
+  linkedMetric ScorecardMetric? @relation("issuesLinkedMetric", fields: [linkedMetricId], references: [id])
+  votes        L10IssueVote[]
+  coverages    L10Coverage[]
 
   @@map("l10_issues")
 }
@@ -189,6 +208,72 @@ model L10Commitment {
   owner   User       @relation(fields: [ownerId], references: [id])
 
   @@map("l10_commitments")
+}
+
+model L10PreReadRead {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  userId    String   @map("user_id")
+  readAt    DateTime @default(now()) @map("read_at")
+
+  meeting L10Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User       @relation(fields: [userId], references: [id])
+
+  @@unique([meetingId, userId])
+  @@map("l10_preread_reads")
+}
+
+model L10Annotation {
+  id           String    @id @default(uuid())
+  meetingId    String    @map("meeting_id")
+  authorId     String    @map("author_id")
+  targetType   String    @map("target_type") // rock, metric, win, challenge
+  targetId     String    @map("target_id")
+  tag          String    // clarificar, discutir
+  comment      String
+  resolvedAt   DateTime? @map("resolved_at")
+  resolvedById String?   @map("resolved_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  meeting    L10Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  author     User       @relation("annotationsAuthored", fields: [authorId], references: [id])
+  resolvedBy User?      @relation("annotationsResolved", fields: [resolvedById], references: [id])
+
+  @@index([meetingId, targetType, targetId])
+  @@map("l10_annotations")
+}
+
+model L10IssueVote {
+  id        String   @id @default(uuid())
+  issueId   String   @map("issue_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  issue L10Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  user  User     @relation(fields: [userId], references: [id])
+
+  @@unique([issueId, userId])
+  @@map("l10_issue_votes")
+}
+
+model L10Coverage {
+  id           String   @id @default(uuid())
+  meetingId    String   @map("meeting_id")
+  sourceType   String   @map("source_type") // metric, rock
+  sourceId     String   @map("source_id")
+  coverageType String   @map("coverage_type") // linked_issue, no_action_note
+  issueId      String?  @map("issue_id")
+  note         String?
+  createdById  String   @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  meeting   L10Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  issue     L10Issue?  @relation(fields: [issueId], references: [id])
+  createdBy User       @relation(fields: [createdById], references: [id])
+
+  @@unique([meetingId, sourceType, sourceId])
+  @@map("l10_coverages")
 }
 
 model AccountabilityRole {
