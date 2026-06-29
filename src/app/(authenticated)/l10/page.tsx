@@ -470,7 +470,7 @@ export default async function L10Page() {
                               isCeo={isCeo}
                               annotations={getAnnos(row.sourceType, row.sourceId)}
                             />
-                            {(row.ownerId === currentUserId || isCeo) && (
+                            {row.ownerId === currentUserId && (
                               <SetCoverageButton
                                 meetingId={meeting.id}
                                 sourceType={row.sourceType}
