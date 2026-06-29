@@ -73,6 +73,12 @@ export async function DELETE(request: Request) {
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { issueId } = await request.json();
+  const existing = await prisma.l10Issue.findUnique({ where: { id: issueId } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (existing.raisedById !== session.user.id && session.user.role !== "ceo") {
+    return NextResponse.json({ error: "Solo el autor o CEO pueden borrar" }, { status: 403 });
+  }
+
   await prisma.l10Issue.delete({ where: { id: issueId } });
   return NextResponse.json({ success: true });
 }

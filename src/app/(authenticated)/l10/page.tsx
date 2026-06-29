@@ -14,6 +14,8 @@ import { MarkAsReadButton } from "./mark-as-read-button";
 import { AnnotateButton } from "./annotate-button";
 import { VoteButton } from "./vote-button";
 import { PhaseControl } from "./phase-control";
+import { StartMeetingButton } from "./start-meeting-button";
+import { PreReadChecklist } from "./preread-checklist";
 
 const IDS_LABELS: Record<string, { label: string; color: string }> = {
   identify: { label: "Identify", color: "bg-yellow-100 text-yellow-800" },
@@ -136,6 +138,7 @@ export default async function L10Page() {
     key: string;
     sourceType: "metric" | "rock";
     sourceId: string;
+    ownerId: string;
     label: string;
     ownerName: string;
     statusBadge: { label: string; className: string };
@@ -150,6 +153,7 @@ export default async function L10Page() {
       key: `metric:${m.id}`,
       sourceType: "metric",
       sourceId: m.id,
+      ownerId: m.ownerId,
       label: m.name,
       ownerName: m.owner.name,
       statusBadge: cfg,
@@ -163,6 +167,7 @@ export default async function L10Page() {
       key: `rock:${r.id}`,
       sourceType: "rock",
       sourceId: r.id,
+      ownerId: r.ownerId,
       label: r.title,
       ownerName: r.owner.name,
       statusBadge: cfg,
@@ -171,8 +176,11 @@ export default async function L10Page() {
     });
   }
   const orphanCount = coverageRows.filter((r) => !r.coverage).length;
-  const issueOptions = meeting
-    ? meeting.issues.map((i) => ({ id: i.id, title: i.title }))
+  // Coverage dropdown only shows issues raised by the current user
+  const issueOptions = meeting && session?.user?.id
+    ? meeting.issues
+        .filter((i) => i.raisedById === session.user!.id)
+        .map((i) => ({ id: i.id, title: i.title }))
     : [];
 
   // Group wins by user
@@ -228,6 +236,66 @@ export default async function L10Page() {
   const getAnnos = (type: string, id: string) => annotationsByTarget.get(`${type}:${id}`) || [];
   const isCeo = session?.user?.role === "ceo";
   const currentUserId = session?.user?.id || "";
+  const currentUser = users.find((u) => u.id === currentUserId);
+
+  // Build pre-read checklist scoped to the current user
+  type ChecklistItem = { key: string; label: string; done: boolean; hint?: string; link?: { href: string; label: string } };
+  const checklistItems: ChecklistItem[] = [];
+  if (meeting && currentUser) {
+    const myWins = recentWins.filter((w) => w.userId === currentUserId);
+    const myMetrics = allMetrics.filter((m) => m.ownerId === currentUserId);
+    const myMetricsUpdated = myMetrics.filter((m) => {
+      const last = m.entries[0];
+      return last && new Date(last.periodStart) >= cycleStart;
+    }).length;
+    const myRocks = allActiveRocks.filter((r) => r.ownerId === currentUserId);
+    const myRocksReviewed = myRocks.filter((r) => new Date(r.updatedAt) >= cycleStart).length;
+    const myCoverageRows = coverageRows.filter((r) => r.ownerId === currentUserId);
+    const myOrphanCoverages = myCoverageRows.filter((r) => !r.coverage).length;
+    const myIssueCount = meeting.issues.filter((i) => i.raisedById === currentUserId).length;
+
+    checklistItems.push({
+      key: "win",
+      label: "Win de la semana",
+      done: myWins.length > 0,
+      link: myWins.length === 0 ? { href: "/wins-challenges", label: "Agregar →" } : undefined,
+    });
+    if (myMetrics.length > 0) {
+      checklistItems.push({
+        key: "metrics",
+        label: `Métricas actualizadas (${myMetricsUpdated}/${myMetrics.length})`,
+        done: myMetricsUpdated === myMetrics.length,
+        link: myMetricsUpdated < myMetrics.length ? { href: "/scorecard", label: "Ir →" } : undefined,
+      });
+    }
+    if (myRocks.length > 0) {
+      checklistItems.push({
+        key: "rocks",
+        label: `Rocks revisados (${myRocksReviewed}/${myRocks.length})`,
+        done: myRocksReviewed === myRocks.length,
+        link: myRocksReviewed < myRocks.length ? { href: "/rocks", label: "Ir →" } : undefined,
+      });
+    }
+    if (myCoverageRows.length > 0) {
+      checklistItems.push({
+        key: "coverage",
+        label: `Cobertura amarrada (${myCoverageRows.length - myOrphanCoverages}/${myCoverageRows.length})`,
+        done: myOrphanCoverages === 0,
+        hint: myOrphanCoverages > 0 ? "tus rojos sin amarrar" : undefined,
+      });
+    }
+    checklistItems.push({
+      key: "ids",
+      label: `IDS enviados (${myIssueCount}/3)`,
+      done: myIssueCount > 0,
+      hint: myIssueCount === 0 ? "agregá al menos uno si tenés tema" : undefined,
+    });
+    checklistItems.push({
+      key: "read",
+      label: "Pre-read marcado leído",
+      done: currentUserRead,
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -241,6 +309,10 @@ export default async function L10Page() {
         {session?.user?.role === "ceo" && <CreateMeetingButton quarterId={activeQuarter.id} />}
       </div>
 
+      {meeting && currentUser && checklistItems.length > 0 && (
+        <PreReadChecklist userName={currentUser.name} items={checklistItems} />
+      )}
+
       {meeting && (
         <div className="space-y-4 rounded-lg bg-mawi-50 px-5 py-4">
           {/* Row 1: meeting label + primary actions */}
@@ -250,7 +322,10 @@ export default async function L10Page() {
             </div>
             <div className="flex items-center gap-2">
               <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
-              {session?.user?.role === "ceo" && (
+              {session?.user?.role === "ceo" && meeting.status === "upcoming" && (
+                <StartMeetingButton meetingId={meeting.id} />
+              )}
+              {session?.user?.role === "ceo" && meeting.status === "in_progress" && (
                 <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
               )}
             </div>
@@ -395,23 +470,25 @@ export default async function L10Page() {
                               isCeo={isCeo}
                               annotations={getAnnos(row.sourceType, row.sourceId)}
                             />
-                            <SetCoverageButton
-                              meetingId={meeting.id}
-                              sourceType={row.sourceType}
-                              sourceId={row.sourceId}
-                              sourceLabel={`${row.sourceType === "metric" ? "Métrica" : "Rock"} · ${row.label}`}
-                              issues={issueOptions}
-                              existing={
-                                row.coverage
-                                  ? {
-                                      id: row.coverage.id,
-                                      coverageType: row.coverage.coverageType,
-                                      issueId: row.coverage.issueId,
-                                      note: row.coverage.note,
-                                    }
-                                  : null
-                              }
-                            />
+                            {(row.ownerId === currentUserId || isCeo) && (
+                              <SetCoverageButton
+                                meetingId={meeting.id}
+                                sourceType={row.sourceType}
+                                sourceId={row.sourceId}
+                                sourceLabel={`${row.sourceType === "metric" ? "Métrica" : "Rock"} · ${row.label}`}
+                                issues={issueOptions}
+                                existing={
+                                  row.coverage
+                                    ? {
+                                        id: row.coverage.id,
+                                        coverageType: row.coverage.coverageType,
+                                        issueId: row.coverage.issueId,
+                                        note: row.coverage.note,
+                                      }
+                                    : null
+                                }
+                              />
+                            )}
                           </div>
                         )}
                       </div>
