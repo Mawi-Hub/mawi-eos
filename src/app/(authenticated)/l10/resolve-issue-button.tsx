@@ -5,33 +5,10 @@ import { useRouter } from "next/navigation";
 
 interface User { id: string; name: string; }
 
-const NEXT_STATUS: Record<string, string> = {
-  identify: "discuss",
-  discuss: "solve",
-  solve: "resolved",
-};
-
-export function ResolveIssueButton({ issueId, currentStatus, users }: { issueId: string; currentStatus: string; users: User[] }) {
+export function ResolveIssueButton({ issueId, users }: { issueId: string; users: User[] }) {
   const [resolving, setResolving] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-
-  async function advanceStatus() {
-    setLoading(true);
-    const next = NEXT_STATUS[currentStatus];
-    if (next === "resolved") {
-      setResolving(true);
-      setLoading(false);
-      return;
-    }
-    await fetch(`/api/l10/issues`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ issueId, idsStatus: next }),
-    });
-    router.refresh();
-    setLoading(false);
-  }
 
   async function handleResolve(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -83,12 +60,9 @@ export function ResolveIssueButton({ issueId, currentStatus, users }: { issueId:
     );
   }
 
-  const nextLabel = currentStatus === "identify" ? "Pasar a Discuss" : currentStatus === "discuss" ? "Pasar a Solve" : "Resolver";
-  const nextColor = currentStatus === "solve" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-gray-600 hover:bg-gray-700";
-
   return (
-    <button onClick={advanceStatus} disabled={loading} className={`rounded px-2.5 py-1 text-xs font-medium text-white ${nextColor} disabled:opacity-50`}>
-      {loading ? "..." : nextLabel}
+    <button onClick={() => setResolving(true)} disabled={loading} className="rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+      Resolver
     </button>
   );
 }

@@ -15,13 +15,6 @@ import { VoteButton } from "./vote-button";
 import { StartMeetingButton } from "./start-meeting-button";
 import { PreReadChecklist } from "./preread-checklist";
 
-const IDS_LABELS: Record<string, { label: string; color: string }> = {
-  identify: { label: "Identify", color: "bg-yellow-100 text-yellow-800" },
-  discuss: { label: "Discuss", color: "bg-blue-100 text-blue-800" },
-  solve: { label: "Solve", color: "bg-purple-100 text-purple-800" },
-  resolved: { label: "Resuelto", color: "bg-emerald-100 text-emerald-800" },
-};
-
 export default async function L10Page() {
   const session = await auth();
   const activeQuarter = await prisma.quarter.findFirst({ where: { isActive: true } });
@@ -549,7 +542,6 @@ export default async function L10Page() {
               ) : (
                 <div className="divide-y divide-gray-50">
                   {sortedIssues.map((issue) => {
-                    const idsCfg = IDS_LABELS[issue.idsStatus] || IDS_LABELS.identify;
                     const priCfg = PRIORITY_CONFIG[issue.priority] || PRIORITY_CONFIG.medio;
                     const userVoted = issue.votes.some((v) => v.userId === currentUserId);
                     const voteDisabled = meeting.status === "completed";
@@ -570,7 +562,9 @@ export default async function L10Page() {
                           <div className="flex flex-shrink-0 items-center gap-1.5">
                             <VoteButton issueId={issue.id} voted={userVoted} count={issue.votes.length} disabled={voteDisabled} />
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${priCfg.className}`}>{priCfg.label}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${idsCfg.color}`}>{idsCfg.label}</span>
+                            {issue.idsStatus === "resolved" && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800">Resuelto</span>
+                            )}
                           </div>
                         </div>
                         {issue.description && <p className="mt-1 text-xs text-gray-500">{issue.description}</p>}
@@ -596,7 +590,7 @@ export default async function L10Page() {
                         )}
                         {issue.idsStatus !== "resolved" && (
                           <div className="mt-2">
-                            <ResolveIssueButton issueId={issue.id} currentStatus={issue.idsStatus} users={users} />
+                            <ResolveIssueButton issueId={issue.id} users={users} />
                           </div>
                         )}
                       </div>
