@@ -42,6 +42,9 @@ next-env.d.ts
 
 /src/generated/prisma
 
+# Local one-off snapshots from scripts/snapshot-l10.ts (full DB dump — never commit)
+scripts/.l10-snapshot.json
+
 # SQLite
 *.db
 *.db-journal
