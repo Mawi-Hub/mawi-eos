@@ -9,7 +9,6 @@ import { ToggleCommitmentButton } from "./toggle-commitment-button";
 import EditIssueButton from "./edit-issue-button";
 import EditCommitmentButton from "./edit-commitment-button";
 import CloseMeetingButton from "./close-meeting-button";
-import { SetCoverageButton } from "./set-coverage-button";
 import { MarkAsReadButton } from "./mark-as-read-button";
 import { AnnotateButton } from "./annotate-button";
 import { VoteButton } from "./vote-button";
@@ -99,7 +98,7 @@ export default async function L10Page() {
   const CHRONIC_RED_THRESHOLD = 4;
 
   // Second wave: queries that depend on meeting/cycleStart. Parallel again.
-  const [recentWins, recentChallenges, coverages, preReadReads, annotationsRaw] = await Promise.all([
+  const [recentWins, recentChallenges, preReadReads, annotationsRaw] = await Promise.all([
     prisma.winChallenge.findMany({
       where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: cycleStart } },
       include: { user: true },
@@ -110,12 +109,6 @@ export default async function L10Page() {
       include: { user: true },
       orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
     }),
-    meeting
-      ? prisma.l10Coverage.findMany({
-          where: { meetingId: meeting.id },
-          include: { issue: { select: { id: true, title: true } } },
-        })
-      : Promise.resolve([] as never[]),
     meeting
       ? prisma.l10PreReadRead.findMany({
           where: { meetingId: meeting.id },
@@ -131,8 +124,25 @@ export default async function L10Page() {
       : Promise.resolve([] as never[]),
   ]);
 
-  const coverageBySource = new Map<string, (typeof coverages)[number]>();
-  for (const c of coverages) coverageBySource.set(`${c.sourceType}:${c.sourceId}`, c);
+  // Cobertura: cada rojo/off-track se considera "amarrado" si existe al menos
+  // un issue de la reunión activa vinculado a esa métrica o rock. No hay un
+  // modelo de cobertura aparte — el owner amarra creando un IDS.
+  const issuesByMetric = new Map<string, Array<{ id: string; title: string }>>();
+  const issuesByRock = new Map<string, Array<{ id: string; title: string }>>();
+  if (meeting) {
+    for (const iss of meeting.issues) {
+      if (iss.linkedMetricId) {
+        const arr = issuesByMetric.get(iss.linkedMetricId) || [];
+        arr.push({ id: iss.id, title: iss.title });
+        issuesByMetric.set(iss.linkedMetricId, arr);
+      }
+      if (iss.linkedRockId) {
+        const arr = issuesByRock.get(iss.linkedRockId) || [];
+        arr.push({ id: iss.id, title: iss.title });
+        issuesByRock.set(iss.linkedRockId, arr);
+      }
+    }
+  }
 
   const coverageRows: Array<{
     key: string;
@@ -142,7 +152,7 @@ export default async function L10Page() {
     label: string;
     ownerName: string;
     statusBadge: { label: string; className: string };
-    coverage: (typeof coverages)[number] | null;
+    linkedIssues: Array<{ id: string; title: string }>;
     chronicWeeks: number | null;
   }> = [];
   for (const m of redMetrics) {
@@ -157,7 +167,7 @@ export default async function L10Page() {
       label: m.name,
       ownerName: m.owner.name,
       statusBadge: cfg,
-      coverage: coverageBySource.get(`metric:${m.id}`) || null,
+      linkedIssues: issuesByMetric.get(m.id) || [],
       chronicWeeks: streak >= CHRONIC_RED_THRESHOLD ? streak : null,
     });
   }
@@ -171,17 +181,11 @@ export default async function L10Page() {
       label: r.title,
       ownerName: r.owner.name,
       statusBadge: cfg,
-      coverage: coverageBySource.get(`rock:${r.id}`) || null,
+      linkedIssues: issuesByRock.get(r.id) || [],
       chronicWeeks: null,
     });
   }
-  const orphanCount = coverageRows.filter((r) => !r.coverage).length;
-  // Coverage dropdown only shows issues raised by the current user
-  const issueOptions = meeting && session?.user?.id
-    ? meeting.issues
-        .filter((i) => i.raisedById === session.user!.id)
-        .map((i) => ({ id: i.id, title: i.title }))
-    : [];
+  const orphanCount = coverageRows.filter((r) => r.linkedIssues.length === 0).length;
 
   // Group wins by user
   const winsByUser: Record<string, typeof recentWins> = {};
@@ -251,7 +255,7 @@ export default async function L10Page() {
     const myRocks = allActiveRocks.filter((r) => r.ownerId === currentUserId);
     const myRocksReviewed = myRocks.filter((r) => new Date(r.updatedAt) >= cycleStart).length;
     const myCoverageRows = coverageRows.filter((r) => r.ownerId === currentUserId);
-    const myOrphanCoverages = myCoverageRows.filter((r) => !r.coverage).length;
+    const myOrphanCoverages = myCoverageRows.filter((r) => r.linkedIssues.length === 0).length;
     const myIssueCount = meeting.issues.filter((i) => i.raisedById === currentUserId).length;
 
     checklistItems.push({
@@ -411,7 +415,7 @@ export default async function L10Page() {
                 <div className="flex items-center gap-2">
                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-700">2</div>
                   <h2 className="text-sm font-semibold text-gray-900">Cobertura</h2>
-                  <span className="text-xs text-gray-400">Pre-read · cada rojo / off-track debe estar amarrado</span>
+                  <span className="text-xs text-gray-400">Pre-read · cada rojo / off-track debería tener un IDS</span>
                 </div>
                 {coverageRows.length > 0 && (
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${orphanCount > 0 ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}`}>
@@ -444,18 +448,17 @@ export default async function L10Page() {
                             )}
                           </div>
                           <div className="mt-1 text-sm text-gray-900">{row.label}</div>
-                          {row.coverage && (
-                            <div className="mt-1.5 rounded bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
-                              {row.coverage.coverageType === "linked_issue" ? (
-                                <span>
-                                  <span className="font-medium text-mawi-700">→ Issue:</span>{" "}
-                                  {row.coverage.issue?.title || "(eliminado)"}
-                                </span>
-                              ) : (
-                                <span>
-                                  <span className="font-medium text-amber-700">No action:</span> {row.coverage.note}
-                                </span>
-                              )}
+                          {row.linkedIssues.length > 0 ? (
+                            <div className="mt-1.5 space-y-1">
+                              {row.linkedIssues.map((iss) => (
+                                <div key={iss.id} className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-700">
+                                  <span className="font-medium text-mawi-700">→ IDS:</span> {iss.title}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-1.5 text-xs text-amber-700">
+                              Sin IDS vinculado — agregá uno o aclará en la reu
                             </div>
                           )}
                         </div>
@@ -470,25 +473,6 @@ export default async function L10Page() {
                               isCeo={isCeo}
                               annotations={getAnnos(row.sourceType, row.sourceId)}
                             />
-                            {row.ownerId === currentUserId && (
-                              <SetCoverageButton
-                                meetingId={meeting.id}
-                                sourceType={row.sourceType}
-                                sourceId={row.sourceId}
-                                sourceLabel={`${row.sourceType === "metric" ? "Métrica" : "Rock"} · ${row.label}`}
-                                issues={issueOptions}
-                                existing={
-                                  row.coverage
-                                    ? {
-                                        id: row.coverage.id,
-                                        coverageType: row.coverage.coverageType,
-                                        issueId: row.coverage.issueId,
-                                        note: row.coverage.note,
-                                      }
-                                    : null
-                                }
-                              />
-                            )}
                           </div>
                         )}
                       </div>
