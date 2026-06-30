@@ -22,7 +22,7 @@ const nav = [
   { href: "/plan", label: "Plan H2", icon: Compass, ceoOnly: false },
   { href: "/scorecard", label: "Scorecard", icon: Target, ceoOnly: false },
   { href: "/rocks", label: "Rocks", icon: Mountain, ceoOnly: false },
-  { href: "/wins-challenges", label: "Wins & Challenges", icon: Trophy, ceoOnly: false },
+  { href: "/wins-challenges", label: "Wins", icon: Trophy, ceoOnly: false },
   { href: "/l10", label: "L10 Meeting", icon: Users, ceoOnly: false },
   { href: "/accountability-chart", label: "Accountability Chart", icon: Network, ceoOnly: false },
   { href: "/quarterly", label: "Trimestres", icon: Calendar, ceoOnly: false },
