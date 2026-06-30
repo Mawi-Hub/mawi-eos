@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { STATUS_CONFIG, PRIORITY_CONFIG } from "@/lib/utils";
+import { STATUS_CONFIG, PRIORITY_CONFIG, getCurrentWeekStartCR } from "@/lib/utils";
 import { CreateMeetingButton } from "./create-meeting-button";
 import { AddIssueButton } from "./add-issue-button";
 import { AddCommitmentButton } from "./add-commitment-button";
@@ -71,11 +71,8 @@ export default async function L10Page() {
   });
   const offTrackRocks = allActiveRocks.filter((r) => r.status === "off_track" || r.status === "riesgo");
 
-  // Cycle cutoff = when the last meeting was closed (falls back to 7 days ago — weekly cadence)
-  const lastClosedMeeting = pastMeetings[0];
-  const cycleStart = lastClosedMeeting
-    ? new Date(lastClosedMeeting.updatedAt)
-    : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // Cycle = current ISO week in Costa Rica (Mon 00:00 → Sun 23:59 CR)
+  const cycleStart = getCurrentWeekStartCR();
 
   // "Weeks red" streak per metric: count leading entries that are off_track/riesgo
   const redStreakByMetric = new Map<string, number>();

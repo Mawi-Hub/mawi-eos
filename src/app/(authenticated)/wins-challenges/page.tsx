@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { getCurrentWeekStartCR } from "@/lib/utils";
 import AddWinButton from "./add-win-button";
 import EditWinButton from "./edit-win-button";
 
@@ -20,13 +21,8 @@ export default async function WinsChallengesPage({
     return <div className="py-12 text-center text-gray-500">No hay trimestre activo.</div>;
   }
 
-  // Get the last closed meeting to determine cycle start
-  const lastClosedMeeting = await prisma.l10Meeting.findFirst({
-    where: { quarterId: activeQuarter.id, status: "completed" },
-    orderBy: { date: "desc" },
-  });
-
-  const cycleStart = lastClosedMeeting ? new Date(lastClosedMeeting.updatedAt) : null;
+  // Cycle = current ISO week in Costa Rica (Mon 00:00 → Sun 23:59 CR)
+  const cycleStart = getCurrentWeekStartCR();
 
   const entries = await prisma.winChallenge.findMany({
     where: {
