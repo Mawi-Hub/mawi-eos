@@ -242,6 +242,31 @@ export default async function L10Page() {
   const currentUserId = session?.user?.id || "";
   const currentUser = users.find((u) => u.id === currentUserId);
 
+  // Per-user readiness for the meeting header. A user is "listo" when every
+  // applicable pre-read item is done for them. Items only count if relevant
+  // (a user with no rocks doesn't need to "review rocks").
+  function isUserReady(userId: string): boolean {
+    if (!meeting) return false;
+    const hasWin = recentWins.some((w) => w.userId === userId);
+    if (!hasWin) return false;
+
+    const userManualMetrics = allMetrics.filter((m) => m.ownerId === userId && m.dataSource === "manual");
+    const userMetricsOk = userManualMetrics.every((m) => {
+      const last = m.entries[0];
+      return last && new Date(last.periodStart) >= cycleStart;
+    });
+    if (!userMetricsOk) return false;
+
+    const userRocks = allActiveRocks.filter((r) => r.ownerId === userId);
+    const userRocksOk = userRocks.every((r) => new Date(r.updatedAt) >= cycleStart);
+    if (!userRocksOk) return false;
+
+    if (!readUserIds.has(userId)) return false;
+    return true;
+  }
+  const readinessByUser = new Map(users.map((u) => [u.id, isUserReady(u.id)] as const));
+  const readyCount = Array.from(readinessByUser.values()).filter(Boolean).length;
+
   // Build pre-read checklist scoped to the current user
   type ChecklistItem = { key: string; label: string; done: boolean; hint?: string; link?: { href: string; label: string } };
   const checklistItems: ChecklistItem[] = [];
@@ -309,48 +334,41 @@ export default async function L10Page() {
       )}
 
       {meeting && (
-        <div className="space-y-4 rounded-lg bg-mawi-50 px-5 py-4">
-          {/* Row 1: meeting label + primary actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-lg bg-mawi-50 px-5 py-3">
+          {/* Left: meeting label + listos pills */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <div className="text-sm font-medium text-mawi-800">
               Reunión {new Date(meeting.date).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" })}
             </div>
-            <div className="flex items-center gap-2">
-              <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
-              {session?.user?.role === "ceo" && meeting.status === "upcoming" && (
-                <StartMeetingButton meetingId={meeting.id} />
-              )}
-              {session?.user?.role === "ceo" && meeting.status === "in_progress" && (
-                <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
-              )}
-            </div>
-          </div>
-
-          {/* Row 2: phase pills */}
-          <div>
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-mawi-600">Fase</div>
-            <PhaseControl meetingId={meeting.id} currentPhase={meeting.phase} canEdit={isCeo} />
-          </div>
-
-          {/* Row 3: read tracker */}
-          <div>
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-mawi-600">
-              Pre-read leído {readUserIds.size}/{users.length}
-            </div>
             <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-mawi-600">
+                Listos {readyCount}/{users.length}
+              </span>
               {users.map((u) => {
-                const read = readUserIds.has(u.id);
+                const ready = readinessByUser.get(u.id);
                 return (
                   <span
                     key={u.id}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${read ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}
-                    title={read ? "Leído" : "Pendiente"}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${ready ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}
+                    title={ready ? "Pre-read completo" : "Le falta algo"}
                   >
-                    {read ? "✓" : "•"} {u.name.split(" ")[0]}
+                    {ready ? "✓" : "•"} {u.name.split(" ")[0]}
                   </span>
                 );
               })}
             </div>
+          </div>
+
+          {/* Right: actions */}
+          <div className="flex items-center gap-2">
+            <PhaseControl meetingId={meeting.id} currentPhase={meeting.phase} canEdit={isCeo} />
+            <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
+            {session?.user?.role === "ceo" && meeting.status === "upcoming" && (
+              <StartMeetingButton meetingId={meeting.id} />
+            )}
+            {session?.user?.role === "ceo" && meeting.status === "in_progress" && (
+              <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
+            )}
           </div>
         </div>
       )}
