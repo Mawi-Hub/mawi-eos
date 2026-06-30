@@ -12,7 +12,6 @@ import CloseMeetingButton from "./close-meeting-button";
 import { MarkAsReadButton } from "./mark-as-read-button";
 import { AnnotateButton } from "./annotate-button";
 import { VoteButton } from "./vote-button";
-import { PhaseControl } from "./phase-control";
 import { StartMeetingButton } from "./start-meeting-button";
 import { PreReadChecklist } from "./preread-checklist";
 
@@ -209,11 +208,9 @@ export default async function L10Page() {
     : 0;
   const remainingIssues = Math.max(0, 3 - userIssueCount);
 
-  // Sort issues by vote count desc when in voting/ids phase
+  // Sort issues by vote count desc — votes are the priority signal whenever there are any
   const sortedIssues = meeting
-    ? (meeting.phase === "voting" || meeting.phase === "ids")
-      ? [...meeting.issues].sort((a, b) => b.votes.length - a.votes.length)
-      : meeting.issues
+    ? [...meeting.issues].sort((a, b) => b.votes.length - a.votes.length)
     : [];
 
   // Pre-read read tracking + annotations indexes
@@ -361,7 +358,9 @@ export default async function L10Page() {
 
           {/* Right: actions */}
           <div className="flex items-center gap-2">
-            <PhaseControl meetingId={meeting.id} currentPhase={meeting.phase} canEdit={isCeo} />
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meeting.status === "in_progress" ? "bg-mawi-800 text-white" : "bg-gray-200 text-gray-600"}`}>
+              {meeting.status === "in_progress" ? "Abierta" : "Por empezar"}
+            </span>
             <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
             {session?.user?.role === "ceo" && meeting.status === "upcoming" && (
               <StartMeetingButton meetingId={meeting.id} />
@@ -553,7 +552,7 @@ export default async function L10Page() {
                     const idsCfg = IDS_LABELS[issue.idsStatus] || IDS_LABELS.identify;
                     const priCfg = PRIORITY_CONFIG[issue.priority] || PRIORITY_CONFIG.medio;
                     const userVoted = issue.votes.some((v) => v.userId === currentUserId);
-                    const voteDisabled = meeting.phase === "closed" || meeting.phase === "preread";
+                    const voteDisabled = meeting.status === "completed";
                     const linkLabel = issue.linkedRock
                       ? `Rock · ${issue.linkedRock.title}`
                       : issue.linkedMetric

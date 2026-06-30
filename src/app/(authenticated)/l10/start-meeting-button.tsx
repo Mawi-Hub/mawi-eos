@@ -8,12 +8,12 @@ export function StartMeetingButton({ meetingId }: { meetingId: string }) {
   const router = useRouter();
 
   async function start() {
-    if (!confirm("¿Empezar la reunión? Esto cierra el pre-read y abre la votación.")) return;
+    if (!confirm("¿Empezar la reunión?")) return;
     setLoading(true);
     await fetch("/api/l10/meetings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ meetingId, status: "in_progress", phase: "voting" }),
+      body: JSON.stringify({ meetingId, status: "in_progress" }),
     });
     router.refresh();
     setLoading(false);
