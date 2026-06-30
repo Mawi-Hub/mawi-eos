@@ -14,6 +14,7 @@ import { AnnotateButton } from "./annotate-button";
 import { VoteButton } from "./vote-button";
 import { StartMeetingButton } from "./start-meeting-button";
 import { PreReadChecklist } from "./preread-checklist";
+import { DeleteIssueButton } from "./delete-issue-button";
 
 export default async function L10Page() {
   const session = await auth();
@@ -257,6 +258,17 @@ export default async function L10Page() {
   const readinessByUser = new Map(users.map((u) => [u.id, isUserReady(u.id)] as const));
   const readyCount = Array.from(readinessByUser.values()).filter(Boolean).length;
 
+  // Sections the user must confirm before marking the pre-read leído
+  const readSections: Array<{ key: string; label: string }> = [];
+  if (recentWins.length > 0) readSections.push({ key: "wins", label: `Leí los ${recentWins.length} wins de la semana` });
+  if (coverageRows.length > 0) readSections.push({ key: "cobertura", label: `Revisé las ${coverageRows.length} métricas/rocks en cobertura` });
+  if (meeting && meeting.issues.length > 0) readSections.push({ key: "ids", label: `Leí los ${meeting.issues.length} IDS propuestos` });
+  const unresolvedAnnotations = annotationsRaw.filter((a) => !a.resolvedAt).length;
+  if (unresolvedAnnotations > 0) readSections.push({ key: "annotations", label: `Revisé las ${unresolvedAnnotations} anotaciones abiertas` });
+  if (readSections.length === 0) readSections.push({ key: "noop", label: "Confirmo que el pre-read está vacío y no hay nada que leer" });
+
+  const inMeeting = meeting?.status === "in_progress";
+
   // Build pre-read checklist scoped to the current user
   type ChecklistItem = { key: string; label: string; done: boolean; hint?: string; link?: { href: string; label: string } };
   const checklistItems: ChecklistItem[] = [];
@@ -354,7 +366,7 @@ export default async function L10Page() {
             <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${meeting.status === "in_progress" ? "bg-mawi-800 text-white" : "bg-gray-200 text-gray-600"}`}>
               {meeting.status === "in_progress" ? "Abierta" : "Por empezar"}
             </span>
-            <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} />
+            <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} items={readSections} />
             {session?.user?.role === "ceo" && meeting.status === "upcoming" && (
               <StartMeetingButton meetingId={meeting.id} />
             )}
@@ -365,16 +377,24 @@ export default async function L10Page() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Column 1 */}
-        <div className="space-y-6">
-          {/* 1. Wins — grouped by person */}
+      <div className={`mx-auto w-full space-y-6 ${inMeeting ? "max-w-5xl" : "max-w-3xl"}`}>
+        {/* In-meeting banner */}
+        {inMeeting && (
+          <div className="rounded-lg border border-mawi-200 bg-mawi-50 px-4 py-2.5 text-sm text-mawi-800">
+            Reunión en curso. El foco son los <strong>IDS</strong>. Pre-read (wins, cobertura) queda colapsado abajo.
+          </div>
+        )}
+
+        {/* === Reading order swaps based on inMeeting === */}
+
+        {/* WINS — full when pre-read, collapsed when in meeting */}
+        {!inMeeting && (
           <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">1</div>
-                <h2 className="text-sm font-semibold text-gray-900">Wins</h2>
-                <span className="text-xs text-gray-400">Pre-read · 1 win por líder</span>
+                <h2 className="text-sm font-semibold text-gray-900">Wins de la semana</h2>
+                <span className="text-xs text-gray-400">1 win por líder</span>
               </div>
             </div>
             <div className="px-5">
@@ -408,8 +428,10 @@ export default async function L10Page() {
               )}
             </div>
           </section>
+        )}
 
-          {/* Cobertura — toda métrica roja y rock off-track debe estar amarrado a un issue o llevar nota */}
+        {/* COBERTURA — full in pre-read, collapsed in meeting */}
+        {!inMeeting && (
           <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center justify-between">
@@ -483,19 +505,16 @@ export default async function L10Page() {
               )}
             </div>
           </section>
+        )}
 
-        </div>
-
-        {/* Column 2 */}
-        <div className="space-y-6">
-          {/* 4. Issues — IDS */}
-          <section className="rounded-lg border border-gray-200 bg-white">
+        {/* ISSUES — protagonist */}
+        <section className="rounded-lg border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-mawi-100 text-xs font-bold text-mawi-700">3</div>
-                  <h2 className="text-sm font-semibold text-gray-900">Issues — IDS</h2>
-                  <span className="text-xs text-gray-400">Reu · 5 min voto + 45 min IDS · máx 3 por persona</span>
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-mawi-100 text-xs font-bold text-mawi-700">{inMeeting ? "1" : "3"}</div>
+                  <h2 className="text-sm font-semibold text-gray-900">IDS de la semana</h2>
+                  <span className="text-xs text-gray-400">{inMeeting ? "Discutí y resolvé por orden de votos" : "Cada líder propone hasta 3"}</span>
                 </div>
                 {meeting && (
                   <AddIssueButton
@@ -509,32 +528,6 @@ export default async function L10Page() {
               </div>
             </div>
             <div className="px-5">
-              {recentChallenges.length > 0 && (
-                <div className="border-b border-gray-100 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Pre-work (challenges recientes)</div>
-                  {recentChallenges.map((c) => (
-                    <div key={c.id} className="mt-2 flex items-start justify-between gap-2 rounded bg-amber-50 px-3 py-2 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-medium text-gray-900">{c.user.name}:</span>{" "}
-                        <span className="text-gray-700">{c.keyChallenge}</span>
-                        {c.followUpAction && <div className="mt-1 text-amber-700">Action: {c.followUpAction}</div>}
-                      </div>
-                      {meeting && (
-                        <AnnotateButton
-                          meetingId={meeting.id}
-                          targetType="challenge"
-                          targetId={c.id}
-                          targetLabel={`Challenge · ${c.user.name}`}
-                          currentUserId={currentUserId}
-                          isCeo={isCeo}
-                          annotations={getAnnos("challenge", c.id)}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {!meeting ? (
                 <p className="py-4 text-sm text-gray-400">Crea una reunión para agregar issues</p>
               ) : sortedIssues.length === 0 ? (
@@ -575,12 +568,16 @@ export default async function L10Page() {
                             {issue.dueDate && <span> · Para: {new Date(issue.dueDate).toLocaleDateString("es", { day: "numeric", month: "short" })}</span>}
                           </div>
                           {(issue.raisedById === session?.user?.id || session?.user?.role === "ceo") && (
-                            <EditIssueButton
-                              issueId={issue.id}
-                              currentTitle={issue.title}
-                              currentDescription={issue.description || ""}
-                              currentPriority={issue.priority}
-                            />
+                            <div className="flex items-center gap-2">
+                              <EditIssueButton
+                                issueId={issue.id}
+                                currentTitle={issue.title}
+                                currentDescription={issue.description || ""}
+                                currentPriority={issue.priority}
+                              />
+                              <span className="text-gray-300">·</span>
+                              <DeleteIssueButton issueId={issue.id} />
+                            </div>
                           )}
                         </div>
                         {issue.resolution && (
@@ -606,9 +603,9 @@ export default async function L10Page() {
             <div className="border-b border-gray-100 px-5 py-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-700">4</div>
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-700">{inMeeting ? "2" : "4"}</div>
                   <h2 className="text-sm font-semibold text-gray-900">Compromisos</h2>
-                  <span className="text-xs text-gray-400">Reu · 5 min en voz alta</span>
+                  <span className="text-xs text-gray-400">Léelos en voz alta al cerrar</span>
                 </div>
                 {meeting && <AddCommitmentButton meetingId={meeting.id} users={users} />}
               </div>
@@ -641,7 +638,59 @@ export default async function L10Page() {
               )}
             </div>
           </section>
-        </div>
+
+        {/* In-meeting collapsed pre-read sections */}
+        {inMeeting && (
+          <>
+            <details className="rounded-lg border border-gray-200 bg-white">
+              <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Wins de la semana ({recentWins.length})
+              </summary>
+              <div className="border-t border-gray-100 px-5 py-3">
+                {Object.keys(winsByUser).length === 0 ? (
+                  <p className="text-sm text-gray-400">Sin wins registrados</p>
+                ) : (
+                  Object.entries(winsByUser).map(([userName, wins]) => (
+                    <div key={userName} className="border-b border-gray-50 py-2 last:border-0">
+                      <div className="text-xs font-semibold text-mawi-700">{userName}</div>
+                      {wins.map((w) => (
+                        <div key={w.id} className="mt-1 text-sm text-gray-700">
+                          {w.wins}
+                          {w.result && <span className="ml-2 text-xs font-medium text-emerald-600">{w.result}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+
+            <details className="rounded-lg border border-gray-200 bg-white">
+              <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Cobertura ({coverageRows.length} {orphanCount > 0 ? `· ${orphanCount} sin IDS` : "· todo cubierto"})
+              </summary>
+              <div className="divide-y divide-gray-50 border-t border-gray-100 px-5">
+                {coverageRows.length === 0 ? (
+                  <p className="py-3 text-sm text-emerald-600">Sin rojos ni rocks off-track</p>
+                ) : (
+                  coverageRows.map((row) => (
+                    <div key={row.key} className="py-2 text-sm">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                        {row.sourceType === "metric" ? "Métrica" : "Rock"}
+                      </span>{" "}
+                      <span className="text-gray-900">{row.label}</span>{" "}
+                      <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${row.statusBadge.className}`}>{row.statusBadge.label}</span>{" "}
+                      <span className="text-[10px] text-mawi-700">· {row.ownerName}</span>
+                      {row.linkedIssues.length === 0 && (
+                        <span className="ml-2 text-[11px] text-amber-700">· sin IDS</span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </details>
+          </>
+        )}
       </div>
 
       {/* History */}
