@@ -247,15 +247,14 @@ export default async function L10Page() {
   const checklistItems: ChecklistItem[] = [];
   if (meeting && currentUser) {
     const myWins = recentWins.filter((w) => w.userId === currentUserId);
-    const myMetrics = allMetrics.filter((m) => m.ownerId === currentUserId);
-    const myMetricsUpdated = myMetrics.filter((m) => {
+    // Only manual metrics need human updates; autocalculated ones (chartmogul, hubspot, posthog) sync on their own
+    const myManualMetrics = allMetrics.filter((m) => m.ownerId === currentUserId && m.dataSource === "manual");
+    const myMetricsUpdated = myManualMetrics.filter((m) => {
       const last = m.entries[0];
       return last && new Date(last.periodStart) >= cycleStart;
     }).length;
     const myRocks = allActiveRocks.filter((r) => r.ownerId === currentUserId);
     const myRocksReviewed = myRocks.filter((r) => new Date(r.updatedAt) >= cycleStart).length;
-    const myCoverageRows = coverageRows.filter((r) => r.ownerId === currentUserId);
-    const myOrphanCoverages = myCoverageRows.filter((r) => r.linkedIssues.length === 0).length;
     const myIssueCount = meeting.issues.filter((i) => i.raisedById === currentUserId).length;
 
     checklistItems.push({
@@ -264,12 +263,12 @@ export default async function L10Page() {
       done: myWins.length > 0,
       link: myWins.length === 0 ? { href: "/wins-challenges", label: "Agregar →" } : undefined,
     });
-    if (myMetrics.length > 0) {
+    if (myManualMetrics.length > 0) {
       checklistItems.push({
         key: "metrics",
-        label: `Métricas actualizadas (${myMetricsUpdated}/${myMetrics.length})`,
-        done: myMetricsUpdated === myMetrics.length,
-        link: myMetricsUpdated < myMetrics.length ? { href: "/scorecard", label: "Ir →" } : undefined,
+        label: `Métricas manuales actualizadas (${myMetricsUpdated}/${myManualMetrics.length})`,
+        done: myMetricsUpdated === myManualMetrics.length,
+        link: myMetricsUpdated < myManualMetrics.length ? { href: "/scorecard", label: "Ir →" } : undefined,
       });
     }
     if (myRocks.length > 0) {
@@ -278,14 +277,6 @@ export default async function L10Page() {
         label: `Rocks revisados (${myRocksReviewed}/${myRocks.length})`,
         done: myRocksReviewed === myRocks.length,
         link: myRocksReviewed < myRocks.length ? { href: "/rocks", label: "Ir →" } : undefined,
-      });
-    }
-    if (myCoverageRows.length > 0) {
-      checklistItems.push({
-        key: "coverage",
-        label: `Cobertura amarrada (${myCoverageRows.length - myOrphanCoverages}/${myCoverageRows.length})`,
-        done: myOrphanCoverages === 0,
-        hint: myOrphanCoverages > 0 ? "tus rojos sin amarrar" : undefined,
       });
     }
     checklistItems.push({
