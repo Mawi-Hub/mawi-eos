@@ -10,7 +10,6 @@ import EditIssueButton from "./edit-issue-button";
 import EditCommitmentButton from "./edit-commitment-button";
 import CloseMeetingButton from "./close-meeting-button";
 import { MarkAsReadButton } from "./mark-as-read-button";
-import { AnnotateButton } from "./annotate-button";
 import { VoteButton } from "./vote-button";
 import { StartMeetingButton } from "./start-meeting-button";
 import { PreReadChecklist } from "./preread-checklist";
@@ -91,14 +90,9 @@ export default async function L10Page() {
   const CHRONIC_RED_THRESHOLD = 4;
 
   // Second wave: queries that depend on meeting/cycleStart. Parallel again.
-  const [recentWins, recentChallenges, preReadReads, annotationsRaw] = await Promise.all([
+  const [recentWins, preReadReads, openCommitments] = await Promise.all([
     prisma.winChallenge.findMany({
       where: { quarterId: activeQuarter.id, entryType: "win", reportDate: { gte: cycleStart } },
-      include: { user: true },
-      orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
-    }),
-    prisma.winChallenge.findMany({
-      where: { quarterId: activeQuarter.id, entryType: "challenge", reportDate: { gte: cycleStart } },
       include: { user: true },
       orderBy: [{ user: { name: "asc" } }, { reportDate: "desc" }],
     }),
@@ -108,13 +102,19 @@ export default async function L10Page() {
           select: { userId: true },
         })
       : Promise.resolve([] as Array<{ userId: string }>),
-    meeting
-      ? prisma.l10Annotation.findMany({
-          where: { meetingId: meeting.id },
-          include: { author: { select: { id: true, name: true } } },
-          orderBy: { createdAt: "asc" },
-        })
-      : Promise.resolve([] as never[]),
+    // Open commitments from PAST meetings — persistent accountability across reus
+    prisma.l10Commitment.findMany({
+      where: {
+        done: false,
+        meeting: { quarterId: activeQuarter.id },
+        ...(meeting ? { meetingId: { not: meeting.id } } : {}),
+      },
+      include: {
+        owner: { select: { id: true, name: true } },
+        meeting: { select: { date: true } },
+      },
+      orderBy: { dueDate: "asc" },
+    }),
   ]);
 
   // Cobertura: cada rojo/off-track se considera "amarrado" si existe al menos
@@ -211,24 +211,6 @@ export default async function L10Page() {
   const readUserIds = new Set(preReadReads.map((r) => r.userId));
   const currentUserRead = session?.user?.id ? readUserIds.has(session.user.id) : false;
 
-  const annotationsByTarget = new Map<
-    string,
-    Array<{ id: string; authorName: string; authorId: string; tag: string; comment: string; resolvedAt: string | null; createdAt: string }>
-  >();
-  for (const a of annotationsRaw) {
-    const key = `${a.targetType}:${a.targetId}`;
-    if (!annotationsByTarget.has(key)) annotationsByTarget.set(key, []);
-    annotationsByTarget.get(key)!.push({
-      id: a.id,
-      authorName: a.author.name,
-      authorId: a.author.id,
-      tag: a.tag,
-      comment: a.comment,
-      resolvedAt: a.resolvedAt ? a.resolvedAt.toISOString() : null,
-      createdAt: a.createdAt.toISOString(),
-    });
-  }
-  const getAnnos = (type: string, id: string) => annotationsByTarget.get(`${type}:${id}`) || [];
   const isCeo = session?.user?.role === "ceo";
   const currentUserId = session?.user?.id || "";
   const currentUser = users.find((u) => u.id === currentUserId);
@@ -263,8 +245,7 @@ export default async function L10Page() {
   if (recentWins.length > 0) readSections.push({ key: "wins", label: `Leí los ${recentWins.length} wins de la semana` });
   if (coverageRows.length > 0) readSections.push({ key: "cobertura", label: `Revisé las ${coverageRows.length} métricas/rocks en cobertura` });
   if (meeting && meeting.issues.length > 0) readSections.push({ key: "ids", label: `Leí los ${meeting.issues.length} IDS propuestos` });
-  const unresolvedAnnotations = annotationsRaw.filter((a) => !a.resolvedAt).length;
-  if (unresolvedAnnotations > 0) readSections.push({ key: "annotations", label: `Revisé las ${unresolvedAnnotations} anotaciones abiertas` });
+  if (openCommitments.length > 0) readSections.push({ key: "commits", label: `Revisé los ${openCommitments.length} compromisos pendientes` });
   if (readSections.length === 0) readSections.push({ key: "noop", label: "Confirmo que el pre-read está vacío y no hay nada que leer" });
 
   const inMeeting = meeting?.status === "in_progress";
@@ -385,6 +366,56 @@ export default async function L10Page() {
           </div>
         )}
 
+        {/* Compromisos abiertos de semanas previas — accountability across reus */}
+        {openCommitments.length > 0 && (() => {
+          const now = new Date();
+          const overdue = openCommitments.filter((c) => new Date(c.dueDate) < now).length;
+          return (
+            <section className="rounded-lg border border-amber-200 bg-white">
+              <div className="flex items-center justify-between border-b border-amber-100 bg-amber-50 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-200 text-xs font-bold text-amber-800">!</div>
+                  <h2 className="text-sm font-semibold text-gray-900">Compromisos abiertos</h2>
+                  <span className="text-xs text-amber-700">de semanas previas — cerralos antes de tomar nuevos</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {overdue > 0 && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800">{overdue} vencidos</span>
+                  )}
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">{openCommitments.length} abiertos</span>
+                </div>
+              </div>
+              <div className="divide-y divide-gray-50 px-5">
+                {openCommitments.map((c) => {
+                  const due = new Date(c.dueDate);
+                  const isOverdue = due < now;
+                  const isMine = c.ownerId === currentUserId;
+                  return (
+                    <div key={c.id} className="flex items-center gap-3 py-2.5">
+                      {(isMine || isCeo) ? (
+                        <ToggleCommitmentButton commitmentId={c.id} done={c.done} />
+                      ) : (
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-gray-200" />
+                      )}
+                      <div className="flex-1">
+                        <span className="text-sm text-gray-900">{c.action}</span>
+                        <span className="ml-2 text-xs font-medium text-mawi-600">{c.owner.name}</span>
+                      </div>
+                      <span className={`text-xs ${isOverdue ? "font-medium text-red-700" : "text-gray-500"}`}>
+                        {isOverdue ? "Vencido " : "Vence "}
+                        {due.toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" })}
+                      </span>
+                      <span className="text-[10px] text-gray-300" title={`Reunión del ${new Date(c.meeting.date).toLocaleDateString("es")}`}>
+                        ·  {new Date(c.meeting.date).toLocaleDateString("es", { day: "numeric", month: "short" })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })()}
+
         {/* === Reading order swaps based on inMeeting === */}
 
         {/* WINS — full when pre-read, collapsed when in meeting */}
@@ -405,22 +436,9 @@ export default async function L10Page() {
                   <div key={userName} className="border-b border-gray-50 py-3 last:border-0">
                     <div className="mb-1 text-xs font-semibold text-mawi-700">{userName}</div>
                     {wins.map((w) => (
-                      <div key={w.id} className="mt-1.5 flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-700">{w.wins}</p>
-                          {w.result && <p className="mt-0.5 text-xs font-medium text-emerald-600">{w.result}</p>}
-                        </div>
-                        {meeting && (
-                          <AnnotateButton
-                            meetingId={meeting.id}
-                            targetType="win"
-                            targetId={w.id}
-                            targetLabel={`Win · ${userName}`}
-                            currentUserId={currentUserId}
-                            isCeo={isCeo}
-                            annotations={getAnnos("win", w.id)}
-                          />
-                        )}
+                      <div key={w.id} className="mt-1.5">
+                        <p className="text-sm text-gray-700">{w.wins}</p>
+                        {w.result && <p className="mt-0.5 text-xs font-medium text-emerald-600">{w.result}</p>}
                       </div>
                     ))}
                   </div>
@@ -485,19 +503,6 @@ export default async function L10Page() {
                             </div>
                           )}
                         </div>
-                        {meeting && (
-                          <div className="flex items-start gap-1.5">
-                            <AnnotateButton
-                              meetingId={meeting.id}
-                              targetType={row.sourceType}
-                              targetId={row.sourceId}
-                              targetLabel={`${row.sourceType === "metric" ? "Métrica" : "Rock"} · ${row.label}`}
-                              currentUserId={currentUserId}
-                              isCeo={isCeo}
-                              annotations={getAnnos(row.sourceType, row.sourceId)}
-                            />
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
