@@ -43,6 +43,9 @@ function formatActual(value: number | null | undefined, unit: string | null): st
   if (u === "months") {
     return `${value.toLocaleString("en-US", { maximumFractionDigits: 0 })} m`;
   }
+  if (u === "boolean") {
+    return value === 1 ? "Sí" : "No";
+  }
   return value.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
@@ -162,6 +165,7 @@ export default async function ScorecardPage() {
                               metricName={metric.name}
                               quarterId={activeQuarter.id}
                               unit={metric.unit}
+                              prompt={metric.calculation}
                               targetNumeric={metric.targetNumeric}
                               targetDirection={metric.targetDirection}
                             />

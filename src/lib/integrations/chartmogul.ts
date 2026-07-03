@@ -50,6 +50,33 @@ export async function getCustomerCount(startDate: string, endDate: string) {
   });
 }
 
+// New-business activities (one entry per new subscription). Cursor-paginated,
+// unlike the /metrics endpoints — we follow `cursor` while `has_more`. Used to
+// count distinct customers that started in a given month ("Nuevos clientes").
+export async function getNewBizActivities(startDate: string, endDate: string) {
+  const all: Array<Record<string, unknown>> = [];
+  let cursor: string | undefined;
+  // Safety cap: 50 pages × 200 = 10k activities, well beyond any month's volume.
+  for (let i = 0; i < 50; i++) {
+    const params: Record<string, string> = {
+      "start-date": startDate,
+      "end-date": endDate,
+      type: "new_biz",
+      "per-page": "200",
+    };
+    if (cursor) params.cursor = cursor;
+    const data = (await fetchCM("/v1/activities", params)) as {
+      entries?: Array<Record<string, unknown>>;
+      has_more?: boolean;
+      cursor?: string;
+    };
+    if (Array.isArray(data.entries)) all.push(...data.entries);
+    if (!data.has_more || !data.cursor) break;
+    cursor = data.cursor;
+  }
+  return all;
+}
+
 export async function getMRRChurnRate(startDate: string, endDate: string) {
   return fetchCM("/v1/metrics/mrr-churn-rate", {
     "start-date": startDate,
@@ -109,8 +136,23 @@ export function parseCustomerCountEntries(
 ) {
   return data.entries.map((e) => ({
     date: e.date as string,
-    customerCount: e["customer-count"] as number,
+    // ChartMogul returns this metric under the `customers` key (not
+    // `customer-count`, which is only the path segment).
+    customerCount: e.customers as number,
   }));
+}
+
+// Flattens new_biz activities to (month-anchor date, customer uuid) pairs so the
+// caller can count distinct customers per month.
+export function parseNewBizCustomers(
+  entries: Array<Record<string, unknown>>
+): { date: string; customerUuid: string }[] {
+  return entries
+    .map((e) => ({
+      date: e.date as string,
+      customerUuid: (e["customer-uuid"] as string) ?? "",
+    }))
+    .filter((e) => e.date && e.customerUuid);
 }
 
 export function parseMRRChurnRateEntries(

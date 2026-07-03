@@ -216,8 +216,8 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     targetDirection: "above",
     frequency: "weekly",
     unit: "count",
-    calculation: "Conteo de nuevos clientes cerrados en el mes.",
-    dataSource: "manual",
+    calculation: "Clientes distintos con nueva suscripción (new_biz) en el mes.",
+    dataSource: "chartmogul",
     sortOrder: 100,
   },
   {

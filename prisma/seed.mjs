@@ -38,8 +38,10 @@ async function upsertQuarter(year, quarter, startDate, endDate, isActive) {
 }
 
 const q1 = await upsertQuarter(2026, 1, "2026-01-01", "2026-03-31", false);
-const q2 = await upsertQuarter(2026, 2, "2026-04-01", "2026-06-30", true);
-console.log("Quarters seeded:", { q1, q2 });
+const q2 = await upsertQuarter(2026, 2, "2026-04-01", "2026-06-30", false);
+const q3 = await upsertQuarter(2026, 3, "2026-07-01", "2026-09-30", true);
+const q4 = await upsertQuarter(2026, 4, "2026-10-01", "2026-12-31", false);
+console.log("Quarters seeded:", { q1, q2, q3, q4 });
 
 // Metrics
 await client.query("DELETE FROM scorecard_entries");

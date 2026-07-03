@@ -7,11 +7,13 @@ import {
   getMRRChurnRate,
   getASPMetric,
   getARPA,
+  getNewBizActivities,
   parseMRREntries,
   parseCustomerChurnEntries,
   parseMRRChurnRateEntries,
   parseASPEntries,
   parseARPAEntries,
+  parseNewBizCustomers,
   type MRRBreakdown,
 } from "@/lib/integrations/chartmogul";
 
@@ -25,6 +27,7 @@ const CHARTMOGUL_SCORECARD_METRICS: { slug: string; name: string; isPct: boolean
   { slug: "new_biz_mrr", name: "New Biz MRR", isPct: false },
   { slug: "expansion_mrr", name: "Expansion MRR", isPct: false },
   { slug: "asp", name: "ASP (Ticket promedio)", isPct: false },
+  { slug: "nuevos_clientes_mes", name: "Nuevos clientes / mes", isPct: false },
 ];
 
 function firstOfMonthUTC(d: Date): Date {
@@ -106,6 +109,7 @@ export async function POST(request: Request) {
   const aspByMonth = new Map<number, number>();
   const churnByMonth = new Map<number, number>();
   const arpaByMonth = new Map<number, number>();
+  const newCustomersByMonth = new Map<number, Set<string>>();
   const errors: string[] = [];
 
   try {
@@ -140,6 +144,19 @@ export async function POST(request: Request) {
     }
   } catch (e) {
     errors.push(`arpa: ${(e as Error).message}`);
+  }
+  try {
+    for (const a of parseNewBizCustomers(await getNewBizActivities(ymd(fetchStart), ymd(fetchEndLast)))) {
+      const periodMs = periodFromCMDate(a.date).getTime();
+      let set = newCustomersByMonth.get(periodMs);
+      if (!set) {
+        set = new Set();
+        newCustomersByMonth.set(periodMs, set);
+      }
+      set.add(a.customerUuid);
+    }
+  } catch (e) {
+    errors.push(`nuevos_clientes: ${(e as Error).message}`);
   }
 
   const mrrByMonth = new Map<number, MRRBreakdown>();
@@ -185,6 +202,8 @@ export async function POST(request: Request) {
         return churnByMonth.get(periodMs) ?? null;
       case "asp":
         return aspByMonth.get(periodMs) ?? null;
+      case "nuevos_clientes_mes":
+        return newCustomersByMonth.get(periodMs)?.size ?? null;
       default:
         return null;
     }
