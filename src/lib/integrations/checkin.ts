@@ -176,6 +176,18 @@ export async function createNotionEntry(
   }
 }
 
+// Post a message to a Slack channel as the bot.
+export async function postSlackMessage(channel: string, text: string): Promise<void> {
+  await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ channel, text }),
+  });
+}
+
 // Post the "saved" confirmation back to the Slack channel.
 export async function postSlackConfirmation(
   channel: string,
@@ -183,16 +195,10 @@ export async function postSlackConfirmation(
   fields: CheckinFields,
 ): Promise<void> {
   const emoji = fields.tipo === "Viernes" ? "🏁" : "⚡";
-  const message = `${emoji} Check-in de *${userName}* registrado en Notion.\n> Energía: ${fields.energia ?? "—"}/5`;
-
-  await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ channel, text: message }),
-  });
+  await postSlackMessage(
+    channel,
+    `${emoji} Check-in de *${userName}* registrado en Notion.\n> Energía: ${fields.energia ?? "—"}/5`,
+  );
 }
 
 // End-to-end handling of one Slack message event. Called in the background
@@ -209,4 +215,151 @@ export async function processCheckinEvent(event: SlackMessageEvent): Promise<voi
   await createNotionEntry(fields, userName, event.ts);
   await postSlackConfirmation(event.channel, userName, fields);
   console.log(`[checkin] ✅ Check-in de ${userName} (${fields.tipo}) guardado en Notion`);
+}
+
+// ---------------------------------------------------------------------------
+// Weekly digest — read the week's check-ins from Notion, summarize with Claude,
+// post to the team channel. Triggered by a Vercel Cron (Monday 8am CR).
+// ---------------------------------------------------------------------------
+
+export type CheckinRow = {
+  persona: string;
+  tipo: string;
+  fecha: string;
+  energia: number | null;
+  porQue: string | null;
+  win: string | null;
+  reto: string | null;
+};
+
+type NotionText = { plain_text?: string };
+type NotionRow = {
+  properties: {
+    Persona?: { rich_text?: NotionText[] };
+    Tipo?: { select?: { name?: string } };
+    Fecha?: { date?: { start?: string } };
+    ["Energía"]?: { number?: number | null };
+    ["Por qué"]?: { rich_text?: NotionText[] };
+    Win?: { rich_text?: NotionText[] };
+    Reto?: { rich_text?: NotionText[] };
+  };
+};
+
+const richText = (t?: NotionText[]) => t?.[0]?.plain_text?.trim() || null;
+
+// Query the Notion DB for check-ins on or after `onOrAfter` (YYYY-MM-DD).
+export async function queryWeeklyCheckins(onOrAfter: string): Promise<CheckinRow[]> {
+  const res = await fetch(
+    `https://api.notion.com/v1/databases/${process.env.NOTION_DATABASE_ID}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body: JSON.stringify({
+        filter: { property: "Fecha", date: { on_or_after: onOrAfter } },
+        sorts: [{ property: "Fecha", direction: "ascending" }],
+        page_size: 100,
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error(`Notion query error: ${JSON.stringify(await res.json())}`);
+  }
+
+  const data = (await res.json()) as { results?: NotionRow[] };
+  return (data.results ?? []).map((r) => ({
+    persona: richText(r.properties.Persona?.rich_text) ?? "—",
+    tipo: r.properties.Tipo?.select?.name ?? "Otro",
+    fecha: r.properties.Fecha?.date?.start ?? "",
+    energia: r.properties["Energía"]?.number ?? null,
+    porQue: richText(r.properties["Por qué"]?.rich_text),
+    win: richText(r.properties.Win?.rich_text),
+    reto: richText(r.properties.Reto?.rich_text),
+  }));
+}
+
+// Plain, deterministic digest — used as a fallback if Claude is unavailable.
+function buildFallbackDigest(rows: CheckinRow[]): string {
+  const energies = rows.map((r) => r.energia).filter((e): e is number => e !== null);
+  const avg = energies.length
+    ? (energies.reduce((a, b) => a + b, 0) / energies.length).toFixed(1)
+    : "—";
+  const wins = rows.filter((r) => r.win).map((r) => `• *${r.persona}:* ${r.win}`);
+  const retos = rows.filter((r) => r.reto).map((r) => `• *${r.persona}:* ${r.reto}`);
+
+  return [
+    "🗓️ *Resumen semanal de check-ins*",
+    `⚡ Energía promedio del equipo: *${avg}/5* (${rows.length} check-ins)`,
+    wins.length ? `\n🏆 *Wins*\n${wins.join("\n")}` : "",
+    retos.length ? `\n🧱 *Frenos / retos*\n${retos.join("\n")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// Ask Claude to write the Slack-formatted weekly digest. Returns null on failure.
+async function summarizeWeek(rows: CheckinRow[]): Promise<string | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  const prompt = `Sos un asistente que resume los check-ins semanales de un equipo de startup latinoamericana para compartir en Slack el lunes por la mañana.
+
+Datos de la semana (JSON):
+${JSON.stringify(rows, null, 2)}
+
+Escribí un resumen breve y accionable en español, formato Slack (usá *negrita* y viñetas con •). Estructura:
+🗓️ *Resumen semanal de check-ins*
+⚡ *Pulso de energía* — promedio del equipo y quién viene bajo/alto si es relevante.
+🏆 *Wins* — los logros más importantes de la semana (agrupá o resumí, no repitas literal).
+🧱 *Frenos / retos* — los bloqueos o retos a atender esta semana.
+
+Sé conciso, directo y humano. No inventes datos que no estén. Respondé solo con el mensaje de Slack, sin backticks ni explicaciones.`;
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1500,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    console.error(`[checkin] Anthropic digest ${res.status}:`, await res.text());
+    return null;
+  }
+
+  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  return data.content?.find((b) => b.type === "text")?.text?.trim() || null;
+}
+
+// Orchestrates the weekly digest: read last 7 days → summarize → post to Slack.
+export async function generateWeeklyDigest(): Promise<{ posted: boolean; count: number }> {
+  const channel = process.env.CHECKIN_CHANNEL_ID;
+  if (!channel) throw new Error("CHECKIN_CHANNEL_ID not set");
+
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const rows = await queryWeeklyCheckins(since);
+
+  if (rows.length === 0) {
+    await postSlackMessage(
+      channel,
+      "🗓️ *Resumen semanal de check-ins* — No hubo check-ins registrados la semana pasada.",
+    );
+    return { posted: true, count: 0 };
+  }
+
+  const summary = (await summarizeWeek(rows)) ?? buildFallbackDigest(rows);
+  await postSlackMessage(channel, summary);
+  console.log(`[checkin] 🗓️ Digest semanal posteado (${rows.length} check-ins)`);
+  return { posted: true, count: rows.length };
 }
