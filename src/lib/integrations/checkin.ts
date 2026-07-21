@@ -188,19 +188,6 @@ export async function postSlackMessage(channel: string, text: string): Promise<v
   });
 }
 
-// Post the "saved" confirmation back to the Slack channel.
-export async function postSlackConfirmation(
-  channel: string,
-  userName: string,
-  fields: CheckinFields,
-): Promise<void> {
-  const emoji = fields.tipo === "Viernes" ? "🏁" : "⚡";
-  await postSlackMessage(
-    channel,
-    `${emoji} Check-in de *${userName}* registrado en Notion.\n> Energía: ${fields.energia ?? "—"}/5`,
-  );
-}
-
 // End-to-end handling of one Slack message event. Called in the background
 // (via `after`) so it never blocks Slack's 3-second ack window.
 export async function processCheckinEvent(event: SlackMessageEvent): Promise<void> {
@@ -213,7 +200,8 @@ export async function processCheckinEvent(event: SlackMessageEvent): Promise<voi
   }
 
   await createNotionEntry(fields, userName, event.ts);
-  await postSlackConfirmation(event.channel, userName, fields);
+  // No Slack confirmation per check-in — the user's own reply is enough, and a
+  // bot reply on every response makes too much noise in the channel.
   console.log(`[checkin] ✅ Check-in de ${userName} (${fields.tipo}) guardado en Notion`);
 }
 
