@@ -29,6 +29,7 @@ export type SlackMessageEvent = {
   text: string;
   ts: string;
   channel: string;
+  channel_type?: string; // "channel" | "im" | ...
   subtype?: string;
   bot_id?: string;
 };

@@ -111,6 +111,22 @@ export const CHARTMOGUL_SCORECARD_METRICS: { slug: string; name: string; isPct: 
   { slug: "asp", name: "ASP (Ticket promedio)", isPct: false },
 ];
 
+// Tablero de management (refactor ago 2026): solo el header de revenue y los
+// indicadores adelantados de NDR/churn, 1–2 por área. El resto de métricas
+// quedan inactivas — viven en las reuniones de cada área, no en la weekly.
+export const MANAGEMENT_ACTIVE_METRICS = [
+  "MRR",
+  "NDR",
+  "CCR",
+  "New Biz MRR",
+  "Expansion MRR",
+  "Demos agendadas / semana",
+  "Fit Score del cliente",
+  "Days to Activate",
+  "MRR en Riesgo",
+  "% clientes score ≥2/3 d30",
+];
+
 const SCORECARD_METRICS: ScorecardSeed[] = [
   // NORTH STAR / Árbol del MRR — sincronizados desde ChartMogul
   {
@@ -1181,6 +1197,7 @@ export async function seedPlanH2() {
     const existing = await prisma.scorecardMetric.findFirst({
       where: { name: metric.name },
     });
+    const isActive = MANAGEMENT_ACTIVE_METRICS.includes(metric.name);
     if (existing) {
       await prisma.scorecardMetric.update({
         where: { id: existing.id },
@@ -1195,7 +1212,7 @@ export async function seedPlanH2() {
           calculation: metric.calculation,
           dataSource: metric.dataSource,
           sortOrder: metric.sortOrder,
-          isActive: true,
+          isActive,
         },
       });
     } else {
@@ -1212,11 +1229,18 @@ export async function seedPlanH2() {
           calculation: metric.calculation,
           dataSource: metric.dataSource,
           sortOrder: metric.sortOrder,
-          isActive: true,
+          isActive,
         },
       });
     }
   }
+
+  // Todo lo que no esté en el tablero de management queda inactivo — cubre
+  // también métricas legadas de seed.mjs que ya no están en SCORECARD_METRICS.
+  await prisma.scorecardMetric.updateMany({
+    where: { name: { notIn: MANAGEMENT_ACTIVE_METRICS } },
+    data: { isActive: false },
+  });
 
   const activeSlugs = new Set(KPIS.map((k) => k.slug));
 

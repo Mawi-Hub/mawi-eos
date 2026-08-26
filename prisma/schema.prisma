@@ -32,8 +32,28 @@ model User {
   annotationsResolved L10Annotation[]  @relation("annotationsResolved")
   issueVotes          L10IssueVote[]
   coveragesCreated    L10Coverage[]
+  kpiCheckinSessions  KpiCheckinSession[]
 
   @@map("users")
+}
+
+// One row per leader per week: tracks where their Slack DM check-in
+// conversation is (wins → metrics → challenges → done).
+model KpiCheckinSession {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  slackUserId    String   @map("slack_user_id")
+  slackChannelId String   @map("slack_channel_id")
+  weekStart      DateTime @map("week_start")
+  step           String   @default("wins") // wins, metrics, challenges, done
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, weekStart])
+  @@index([slackChannelId])
+  @@map("kpi_checkin_sessions")
 }
 
 model Quarter {

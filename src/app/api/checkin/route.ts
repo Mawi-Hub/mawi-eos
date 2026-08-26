@@ -4,6 +4,7 @@ import {
   processCheckinEvent,
   type SlackMessageEvent,
 } from "@/lib/integrations/checkin";
+import { processKpiDmEvent } from "@/lib/integrations/kpiCheckin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,14 +42,25 @@ export async function POST(request: Request) {
 
   const event = body.event as SlackMessageEvent;
 
-  // Only real human messages in the check-ins channel — skip edits, joins,
-  // and the bot's own confirmations.
-  if (
-    event?.type !== "message" ||
-    event.channel !== process.env.CHECKIN_CHANNEL_ID ||
-    event.subtype ||
-    event.bot_id
-  ) {
+  // Only real human messages — skip edits, joins, and the bot's own replies.
+  if (event?.type !== "message" || event.subtype || event.bot_id) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // DMs al bot → conversación de KPI check-in (wins → métricas → challenges).
+  if (event.channel_type === "im") {
+    after(async () => {
+      try {
+        await processKpiDmEvent(event);
+      } catch (error) {
+        console.error("[kpi-checkin] Error procesando DM:", error);
+      }
+    });
+    return NextResponse.json({ ok: true });
+  }
+
+  // Mensajes de canal: solo #team-checkins.
+  if (event.channel !== process.env.CHECKIN_CHANNEL_ID) {
     return NextResponse.json({ ok: true });
   }
 
