@@ -259,6 +259,23 @@ const SCORECARD_METRICS: ScorecardSeed[] = [
     dataSource: "manual",
     sortOrder: 103,
   },
+  {
+    // Marketing: indicador adelantado de New Biz MRR. Lo escribe
+    // /api/sync/hubspot contando meetings del scheduler de demos
+    // ("¡Decisiones acertadas...!") creados en la semana, sin cancelados.
+    name: "Demos agendadas / semana",
+    category: "sales_health",
+    ownerRole: "sales",
+    targetValue: "≥ 25",
+    targetNumeric: 25,
+    targetDirection: "above",
+    frequency: "weekly",
+    unit: "count",
+    calculation:
+      "Meetings de demo creados en la semana en HubSpot (scheduler \"Decisiones acertadas\"), excluye cancelados. Meta: 30 clientes/mes ÷ 30% cierre ≈ 25 demos/semana.",
+    dataSource: "hubspot",
+    sortOrder: 104,
+  },
 
   // CUSTOMER SUCCESS — Gaby
   {
@@ -1124,10 +1141,15 @@ export async function seedPlanH2() {
     if (user) ownersByRole.set(role, user.id);
   }
 
-  // While HubSpot/PostHog sync routes don't write to ScorecardEntry yet,
-  // treat those metrics as manual so owners can update them by hand.
+  // While the PostHog sync (and most of the HubSpot one) doesn't write to
+  // ScorecardEntry yet, treat those metrics as manual so owners can update
+  // them by hand. "Demos agendadas / semana" is the exception:
+  // /api/sync/hubspot sí la escribe semanalmente.
   await prisma.scorecardMetric.updateMany({
-    where: { dataSource: { in: ["hubspot", "posthog"] } },
+    where: {
+      dataSource: { in: ["hubspot", "posthog"] },
+      name: { not: "Demos agendadas / semana" },
+    },
     data: { dataSource: "manual" },
   });
 

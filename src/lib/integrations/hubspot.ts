@@ -30,6 +30,44 @@ export async function searchDeals(filters: Record<string, unknown>[] = [], prope
   });
 }
 
+// Demo meetings are booked through the "¡Decisiones acertadas...!" HubSpot
+// scheduler pages, so the title token is the only stable marker for them.
+// Canceled bookings keep the title but gain a "Cancelado:" prefix.
+const DEMO_TITLE_TOKEN = "Decisiones";
+const CANCELED_TITLE_TOKEN = "Cancelado";
+
+export async function searchDemoMeetings(createdSince: string) {
+  const meetings: Array<Record<string, string>> = [];
+  let after: string | undefined;
+
+  do {
+    const page = await fetchHS("/crm/v3/objects/meetings/search", {
+      method: "POST",
+      body: JSON.stringify({
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: "hs_createdate", operator: "GTE", value: createdSince },
+              { propertyName: "hs_meeting_title", operator: "CONTAINS_TOKEN", value: DEMO_TITLE_TOKEN },
+              { propertyName: "hs_meeting_title", operator: "NOT_CONTAINS_TOKEN", value: CANCELED_TITLE_TOKEN },
+            ],
+          },
+        ],
+        properties: ["hs_meeting_title", "hs_createdate"],
+        limit: 200,
+        ...(after ? { after } : {}),
+      }),
+    });
+
+    meetings.push(
+      ...(page.results?.map((m: { properties: Record<string, string> }) => m.properties) ?? [])
+    );
+    after = page.paging?.next?.after;
+  } while (after);
+
+  return meetings;
+}
+
 export async function searchContacts(filters: Record<string, unknown>[] = []) {
   return fetchHS("/crm/v3/objects/contacts/search", {
     method: "POST",
