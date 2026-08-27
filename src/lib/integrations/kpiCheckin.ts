@@ -19,6 +19,8 @@ import type { KpiCheckinSession, ScorecardMetric, User } from "@/generated/prism
 // Métricas de contexto que se muestran a todos en el paso "ver métricas".
 const HEADER_METRICS = ["MRR", "NDR", "CCR", "Demos agendadas / semana"];
 
+const LEADERSHIP_ROLES = ["ceo", "sales", "cs", "product", "engineering"];
+
 const STATUS_EMOJI: Record<string, string> = {
   on_track: "🟢",
   riesgo: "🟡",
@@ -186,20 +188,14 @@ export type StartKpiCheckinOptions = {
 export async function startKpiCheckins(options?: StartKpiCheckinOptions): Promise<KpiCheckinStartResult> {
   const dryRun = options?.dryRun ?? false;
   const preview = options?.preview ?? false;
-  const metrics = await prisma.scorecardMetric.findMany({
-    where: { isActive: true, dataSource: "manual" },
-    include: { owner: true },
-    orderBy: { sortOrder: "asc" },
+
+  // Todo el equipo de liderazgo recibe el check-in, aunque no tenga KPIs
+  // manuales: los wins y challenges se piden igual (a esos se les salta el
+  // paso de métricas).
+  let targets = await prisma.user.findMany({
+    where: { role: { in: LEADERSHIP_ROLES } },
+    orderBy: { name: "asc" },
   });
-
-  const byOwner = new Map<string, { owner: User; metrics: ScorecardMetric[] }>();
-  for (const metric of metrics) {
-    const group = byOwner.get(metric.ownerId) ?? { owner: metric.owner, metrics: [] };
-    group.metrics.push(metric);
-    byOwner.set(metric.ownerId, group);
-  }
-
-  let targets = [...byOwner.values()].map((g) => g.owner);
   if (options?.onlyEmail) {
     const user = await prisma.user.findUnique({ where: { email: options.onlyEmail } });
     if (!user) {
@@ -274,7 +270,9 @@ export async function processKpiDmEvent(event: SlackMessageEvent): Promise<void>
 
   if (session.step === "wins") await handleWins(session, event.text);
   else if (session.step === "metrics") await handleMetrics(session, event.text);
-  else if (session.step === "challenges") await handleChallenges(session, event.text);
+  else if (session.step === "challenges" || session.step === "challenges_relink") {
+    await handleChallenges(session, event.text);
+  }
 }
 
 async function advanceStep(sessionId: string, step: string): Promise<void> {
@@ -319,17 +317,67 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   }
 
   const metrics = await metricsForSession(session);
-  await advanceStep(session.id, "metrics");
 
   const ack = extracted?.win
     ? session.preview
       ? `🧪 Leí este win (no se guardó): _${extracted.win}_`
       : "💪 Anotado el win."
     : "Va, sin win esta semana — pasa. 💪";
+
+  // Sin KPIs manuales propios (p.ej. el CEO, cuyas métricas son automáticas)
+  // no hay nada que cargar: se salta directo al tablero y los challenges.
+  if (metrics.length === 0) {
+    await advanceStep(session.id, "challenges");
+    const summary = await buildScorecardSummary(session.userId);
+    await postSlackMessage(
+      session.slackChannelId,
+      `${ack}\n\nNo tenés KPIs manuales que cargar — los tuyos se actualizan solos. ` +
+        `Así va el tablero:\n${summary}\n\n${await challengePrompt(session.userId)}`,
+    );
+    return;
+  }
+
+  await advanceStep(session.id, "metrics");
   await postSlackMessage(
     session.slackChannelId,
     `${ack}\n\nAhora tus KPIs. Mandámelos en un solo mensaje:\n${metrics.map(metricLine).join("\n")}\n` +
       `_Ejemplo: "${metrics[0]?.name ?? "Métrica"} 85"_`,
+  );
+}
+
+// Opciones a las que un challenge puede colgarse: los rocks del quarter activo
+// de esa persona + las métricas vivas del tablero.
+async function linkOptions(userId: string): Promise<{ rocks: { id: string; title: string }[]; metrics: { id: string; name: string }[] }> {
+  const quarter = await prisma.quarter.findFirst({ where: { isActive: true } });
+  const rocks = quarter
+    ? await prisma.rock.findMany({
+        where: { quarterId: quarter.id, ownerId: userId },
+        select: { id: true, title: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const metrics = await prisma.scorecardMetric.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true },
+    orderBy: { sortOrder: "asc" },
+  });
+  return { rocks, metrics };
+}
+
+// Mensaje que pide los challenges recordando que cada uno debe colgar de algo.
+async function challengePrompt(userId: string): Promise<string> {
+  const { rocks, metrics } = await linkOptions(userId);
+  const rockList = rocks.length
+    ? `\n*Tus Rocks:*\n${rocks.map((r) => `• ${r.title}`).join("\n")}`
+    : "\n_No tenés Rocks este quarter._";
+  const metricList = `\n*Métricas:*\n${metrics.map((m) => `• ${m.name}`).join("\n")}`;
+
+  return (
+    `Último paso: *¿qué challenges traés para la reunión?* 🧱\n` +
+    `Máximo 3. *Cada challenge tiene que ir ligado a un Rock o a una métrica* — si no se puede ligar, ` +
+    `es operativo y no va a la reunión.\n${rockList}\n${metricList}\n\n` +
+    `_Ejemplo: "La clasificación está frenando implementaciones → Days to Activate"_. ` +
+    `Si no tenés ninguno, decime "ninguno"._`
   );
 }
 
@@ -443,35 +491,83 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
         ? `${session.preview ? "🧪 KPIs leídos (sin guardar)" : "✅ KPIs guardados"}: ${savedLabels.join(", ")}.`
         : "Va, seguimos sin cargar KPIs."
     }\n\n` +
-      `Así va el tablero:\n${summary}\n\n` +
-      `Último paso: *¿qué challenges traés para la reunión?* 🧱\n` +
-      `_Máximo 3, idealmente los que pegan a retención/NDR. Si no tenés, decime "ninguno"._`,
+      `Así va el tablero:\n${summary}\n\n${await challengePrompt(session.userId)}`,
   );
 }
 
-// Paso 3: challenges → WinChallenge(entry_type=challenge) y cierre.
+// Paso 3: challenges → WinChallenge(entry_type=challenge), cada uno ligado a un
+// Rock o a una métrica. Si alguno viene sin vínculo se re-pregunta una vez
+// (step "challenges_relink"); en la segunda pasada se acepta lo que haya.
 async function handleChallenges(session: SessionWithUser, text: string): Promise<void> {
+  const { rocks, metrics } = await linkOptions(session.userId);
+  const isRelink = session.step === "challenges_relink";
+
   const extracted = await claudeJson<{
-    challenges: { titulo: string; detalle: string | null; prioridad: "alto" | "medio" | "bajo" }[];
+    challenges: {
+      titulo: string;
+      detalle: string | null;
+      prioridad: "alto" | "medio" | "bajo";
+      vinculo_tipo: "rock" | "metrica" | null;
+      vinculo_nombre: string | null;
+    }[];
   }>(
     `Un líder responde en Slack con los challenges/retos que quiere llevar a la reunión de management.
+Cada challenge debe ir ligado a un Rock o a una métrica del scorecard.
+
+Rocks disponibles (usá el título EXACTO):
+${rocks.length ? rocks.map((r) => `- "${r.title}"`).join("\n") : "- (ninguno)"}
+
+Métricas disponibles (usá el nombre EXACTO):
+${metrics.map((m) => `- "${m.name}"`).join("\n")}
 
 Mensaje:
 "${text}"
 
 Extraé hasta 3 challenges. Si dice que no tiene ninguno, devolvé lista vacía.
 Prioridad: "alto" si suena urgente o pega a churn/retención/ventas, si no "medio", "bajo" si es menor.
+Para el vínculo: elegí el Rock o la métrica que mejor corresponda según lo que diga el mensaje.
+Si el mensaje no permite deducir a cuál va, dejá vinculo_tipo y vinculo_nombre en null — no inventes.
 Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
 {
-  "challenges": [{ "titulo": "resumen corto", "detalle": "contexto adicional" o null, "prioridad": "alto" }]
+  "challenges": [{
+    "titulo": "resumen corto",
+    "detalle": "contexto adicional" o null,
+    "prioridad": "alto",
+    "vinculo_tipo": "rock" | "metrica" | null,
+    "vinculo_nombre": "título o nombre exacto" o null
+  }]
 }`,
   );
 
   const challenges = (extracted?.challenges ?? []).slice(0, 3);
+
+  const rockByTitle = new Map(rocks.map((r) => [r.title.toLowerCase(), r.id]));
+  const metricByName = new Map(metrics.map((m) => [m.name.toLowerCase(), m.id]));
+  const resolved = challenges.map((c) => {
+    const key = c.vinculo_nombre?.toLowerCase().trim() ?? "";
+    const rockId = c.vinculo_tipo === "rock" ? rockByTitle.get(key) ?? null : null;
+    const metricId = c.vinculo_tipo === "metrica" ? metricByName.get(key) ?? null : null;
+    return { ...c, rockId, metricId };
+  });
+
+  // Primera pasada con algún challenge sin vincular → pedirlo de nuevo.
+  const unlinked = resolved.filter((c) => !c.rockId && !c.metricId);
+  if (unlinked.length > 0 && !isRelink) {
+    await advanceStep(session.id, "challenges_relink");
+    await postSlackMessage(
+      session.slackChannelId,
+      `Casi 🙌. Me falta a qué se liga ${unlinked.length === 1 ? "este challenge" : "estos challenges"}:\n` +
+        unlinked.map((c) => `• ${c.titulo}`).join("\n") +
+        `\n\nDecime el Rock o la métrica de cada uno y te los cierro. ` +
+        `_Reenviame la lista completa con el vínculo, ej: "${unlinked[0].titulo} → Days to Activate"._`,
+    );
+    return;
+  }
+
   const quarterId = session.preview ? null : await quarterIdForDate(new Date());
 
   if (quarterId) {
-    for (const c of challenges) {
+    for (const c of resolved) {
       await prisma.winChallenge.create({
         data: {
           userId: session.userId,
@@ -480,6 +576,8 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
           entryType: "challenge",
           keyChallenge: c.detalle ? `${c.titulo} — ${c.detalle}` : c.titulo,
           priority: c.prioridad ?? "medio",
+          linkedRockId: c.rockId,
+          linkedMetricId: c.metricId,
         },
       });
     }
@@ -489,8 +587,13 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
 
   const appUrl = process.env.NEXTAUTH_URL ?? "";
   const firstName = session.user.name.split(" ")[0];
-  const challengeSummary = challenges.length
-    ? challenges.map((c) => `• ${c.titulo} (${c.prioridad})`).join("\n")
+  const challengeSummary = resolved.length
+    ? resolved
+        .map((c) => {
+          const link = c.vinculo_nombre && (c.rockId || c.metricId) ? ` → ${c.vinculo_nombre}` : " → ⚠️ sin vincular";
+          return `• ${c.titulo} (${c.prioridad})${link}`;
+        })
+        .join("\n")
     : "• (sin challenges esta semana)";
 
   await postSlackMessage(
