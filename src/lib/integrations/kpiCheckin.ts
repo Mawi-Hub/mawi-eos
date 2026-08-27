@@ -1,7 +1,7 @@
 // KPI check-in por DM: Slack → Claude → Scorecard / Wins & Challenges.
 //
-// Un cron (jueves 5pm CR) le abre un DM a cada líder con métricas manuales
-// activas. La conversación avanza en 3 pasos (KpiCheckinSession.step):
+// Un cron (jueves 4pm CR) le abre un DM a cada líder del equipo.
+// La conversación avanza en 3 pasos (KpiCheckinSession.step):
 //   wins       → guarda el win de la semana como WinChallenge
 //   metrics    → extrae valores del texto y escribe ScorecardEntry del período
 //   challenges → guarda hasta 3 retos como WinChallenge y cierra con resumen
