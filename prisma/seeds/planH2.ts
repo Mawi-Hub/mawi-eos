@@ -1199,13 +1199,18 @@ export async function seedPlanH2() {
     });
     const isActive = MANAGEMENT_ACTIVE_METRICS.includes(metric.name);
     if (existing) {
+      // Las métricas de ChartMogul llevan la meta del mes en curso, que el
+      // sync refresca según la rampa del plan. Re-sembrar no debe devolverlas
+      // a la meta de cierre de semestre.
+      const targetOwnedBySync = metric.dataSource === "chartmogul";
       await prisma.scorecardMetric.update({
         where: { id: existing.id },
         data: {
           category: metric.category,
           ownerId,
-          targetValue: metric.targetValue,
-          targetNumeric: metric.targetNumeric,
+          ...(targetOwnedBySync
+            ? {}
+            : { targetValue: metric.targetValue, targetNumeric: metric.targetNumeric }),
           targetDirection: metric.targetDirection,
           frequency: metric.frequency,
           unit: metric.unit,

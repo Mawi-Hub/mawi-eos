@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { calculateStatus } from "@/lib/utils";
+import { calculateStatus, formatTargetLabel } from "@/lib/utils";
 import {
   getMRRMetrics,
   getCustomerChurnRate,
@@ -363,6 +363,25 @@ export async function POST(request: Request) {
       });
       updated++;
     }
+  }
+
+  // La meta de estas métricas es la del MES en curso, no la de cierre de
+  // semestre: "MRR meta $121K" en agosto no le dice a nadie si el mes fue
+  // bueno. Se refresca en cada sync conforme avanza la rampa.
+  const currentMonthMs = currentMonth.getTime();
+  for (const m of CHARTMOGUL_SCORECARD_METRICS) {
+    const metric = metricByName.get(m.name);
+    const projectedRaw = projectedBySlug.get(m.slug)?.get(currentMonthMs);
+    if (!metric || projectedRaw === undefined) continue;
+
+    const projected = m.isPct ? projectedRaw * 100 : projectedRaw;
+    await prisma.scorecardMetric.update({
+      where: { id: metric.id },
+      data: {
+        targetNumeric: projected,
+        targetValue: formatTargetLabel(projected, metric.unit, metric.targetDirection),
+      },
+    });
   }
 
   await prisma.apiSyncCache.upsert({

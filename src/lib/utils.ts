@@ -72,3 +72,16 @@ export function calculateStatus(actual: number | null, target: number | null, di
   }
   return actual === target ? "on_track" : "off_track";
 }
+
+// Etiqueta legible de una meta: "$74,130", "≥ 94.53%", "≤ 5.76%".
+// Se usa para que el target de las métricas del plan muestre el número que
+// toca en el mes en curso y no el de cierre de semestre.
+export function formatTargetLabel(value: number, unit: string | null, direction: string): string {
+  const n = Number.isInteger(value)
+    ? value.toLocaleString("en-US")
+    : value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+  if (unit === "%") return `${direction === "below" ? "≤" : "≥"} ${n}%`;
+  if (unit === "$") return `$${n}`;
+  return direction === "below" ? `≤ ${n}` : `≥ ${n}`;
+}
