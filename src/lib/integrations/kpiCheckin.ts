@@ -150,19 +150,13 @@ async function quarterIdForDate(d: Date): Promise<string | null> {
   return quarter?.id ?? null;
 }
 
-async function userManualMetrics(userId: string): Promise<ScorecardMetric[]> {
-  return prisma.scorecardMetric.findMany({
-    where: { ownerId: userId, isActive: true, dataSource: "manual" },
-    orderBy: { sortOrder: "asc" },
-  });
-}
-
-// En prueba mostramos todos los KPIs manuales del tablero (el tester puede no
-// tener ninguno propio) — igual no se escribe nada.
+// Los KPIs que le tocan a esa persona. La prueba usa exactamente los mismos
+// que la corrida real (solo cambia que no se escribe nada), así el ensayo
+// refleja lo que va a pasar el jueves — incluido saltarse el paso si no
+// tiene métricas manuales propias.
 async function metricsForSession(session: KpiCheckinSession): Promise<ScorecardMetric[]> {
-  if (!session.preview) return userManualMetrics(session.userId);
   return prisma.scorecardMetric.findMany({
-    where: { isActive: true, dataSource: "manual" },
+    where: { ownerId: session.userId, isActive: true, dataSource: "manual" },
     orderBy: { sortOrder: "asc" },
   });
 }
