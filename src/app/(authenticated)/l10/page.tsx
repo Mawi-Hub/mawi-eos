@@ -71,7 +71,6 @@ export default async function L10Page() {
     const status = m.entries[0]?.status;
     return status === "off_track" || status === "riesgo";
   });
-  const offTrackRocks = allActiveRocks.filter((r) => r.status === "off_track" || r.status === "riesgo");
 
   // Cycle = current ISO week in Costa Rica (Mon 00:00 → Sun 23:59 CR)
   const cycleStart = getCurrentWeekStartCR();
@@ -136,6 +135,9 @@ export default async function L10Page() {
     }
   }
 
+  // Cobertura lista TODO el tablero: los verdes en una línea para dar contexto,
+  // y los rojos/off-track con el detalle y el reclamo de IDS. Solo los rojos
+  // cuentan para "sin amarrar".
   const coverageRows: Array<{
     key: string;
     sourceType: "metric" | "rock";
@@ -146,11 +148,27 @@ export default async function L10Page() {
     statusBadge: { label: string; className: string };
     linkedIssues: Array<{ id: string; title: string }>;
     chronicWeeks: number | null;
+    needsIds: boolean;
+    actual: string;
+    target: string;
   }> = [];
-  for (const m of redMetrics) {
+
+  const isRed = (status?: string) => status === "off_track" || status === "riesgo";
+
+  // Valor de la última entrada, respetando el display manual y la unidad.
+  function metricActual(entry?: { actualValue: number | null; actualDisplay: string | null }): string {
+    if (!entry) return "sin dato";
+    if (entry.actualDisplay) return entry.actualDisplay;
+    if (entry.actualValue === null) return "sin dato";
+    return String(entry.actualValue);
+  }
+
+  for (const m of allMetrics) {
     const entry = m.entries[0];
-    const cfg = STATUS_CONFIG[entry?.status || "pending"];
+    const status = entry?.status || "pending";
     const streak = redStreakByMetric.get(m.id) || 0;
+    const unit = m.unit === "%" || m.unit === "$" ? m.unit : "";
+    const actual = metricActual(entry);
     coverageRows.push({
       key: `metric:${m.id}`,
       sourceType: "metric",
@@ -158,13 +176,15 @@ export default async function L10Page() {
       ownerId: m.ownerId,
       label: m.name,
       ownerName: m.owner.name,
-      statusBadge: cfg,
+      statusBadge: STATUS_CONFIG[status],
       linkedIssues: issuesByMetric.get(m.id) || [],
       chronicWeeks: streak >= CHRONIC_RED_THRESHOLD ? streak : null,
+      needsIds: isRed(status),
+      actual: actual === "sin dato" || !unit ? actual : unit === "%" ? `${actual}%` : `${unit}${actual}`,
+      target: m.targetValue ?? "—",
     });
   }
-  for (const r of offTrackRocks) {
-    const cfg = STATUS_CONFIG[r.status];
+  for (const r of allActiveRocks) {
     coverageRows.push({
       key: `rock:${r.id}`,
       sourceType: "rock",
@@ -172,12 +192,20 @@ export default async function L10Page() {
       ownerId: r.ownerId,
       label: r.title,
       ownerName: r.owner.name,
-      statusBadge: cfg,
+      statusBadge: STATUS_CONFIG[r.status],
       linkedIssues: issuesByRock.get(r.id) || [],
       chronicWeeks: null,
+      needsIds: isRed(r.status),
+      actual: `${r.progress}%`,
+      target: "100%",
     });
   }
-  const orphanCount = coverageRows.filter((r) => r.linkedIssues.length === 0).length;
+
+  // Rojos primero: son los que exigen acción.
+  coverageRows.sort((a, b) => Number(b.needsIds) - Number(a.needsIds));
+
+  const attentionRows = coverageRows.filter((r) => r.needsIds);
+  const orphanCount = attentionRows.filter((r) => r.linkedIssues.length === 0).length;
 
   // Group wins by user
   const winsByUser: Record<string, typeof recentWins> = {};
@@ -464,52 +492,77 @@ export default async function L10Page() {
                 </div>
                 {coverageRows.length > 0 && (
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${orphanCount > 0 ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"}`}>
-                    {orphanCount > 0 ? `${orphanCount} sin amarrar` : "Todo amarrado"}
+                    {attentionRows.length === 0
+                      ? "Todo en verde"
+                      : orphanCount > 0
+                        ? `${orphanCount} de ${attentionRows.length} sin amarrar`
+                        : "Todo amarrado"}
                   </span>
                 )}
               </div>
             </div>
             <div className="px-5">
               {coverageRows.length === 0 ? (
-                <p className="py-4 text-sm text-emerald-600">No hay rojos ni rocks off-track</p>
+                <p className="py-4 text-sm text-gray-500">No hay métricas ni rocks activos</p>
               ) : (
                 <div className="divide-y divide-gray-50">
-                  {coverageRows.map((row) => (
-                    <div key={row.key} className="py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
-                              {row.sourceType === "metric" ? "Métrica" : "Rock"}
+                  {coverageRows.map((row) =>
+                    row.needsIds ? (
+                      // Rojo / off-track: detalle completo y reclamo de IDS.
+                      <div key={row.key} className="py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                            {row.sourceType === "metric" ? "Métrica" : "Rock"}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${row.statusBadge.className}`}>
+                            {row.statusBadge.label}
+                          </span>
+                          <span className="text-[10px] text-mawi-700">{row.ownerName}</span>
+                          {row.chronicWeeks && (
+                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white" title="Métrica en rojo varias semanas seguidas">
+                              ⚠ {row.chronicWeeks} sem en rojo
                             </span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${row.statusBadge.className}`}>
-                              {row.statusBadge.label}
-                            </span>
-                            <span className="text-[10px] text-mawi-700">{row.ownerName}</span>
-                            {row.chronicWeeks && (
-                              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white" title="Métrica en rojo varias semanas seguidas">
-                                ⚠ {row.chronicWeeks} sem en rojo
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-1 text-sm text-gray-900">{row.label}</div>
-                          {row.linkedIssues.length > 0 ? (
-                            <div className="mt-1.5 space-y-1">
-                              {row.linkedIssues.map((iss) => (
-                                <div key={iss.id} className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-700">
-                                  <span className="font-medium text-mawi-700">→ IDS:</span> {iss.title}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="mt-1.5 text-xs text-amber-700">
-                              Sin IDS vinculado — agregá uno o aclará en la reu
-                            </div>
                           )}
                         </div>
+                        <div className="mt-1 text-sm text-gray-900">{row.label}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                          <span className="text-gray-500">
+                            Actual <span className="font-semibold text-red-700">{row.actual}</span>
+                          </span>
+                          <span className="text-gray-500">
+                            Esperado <span className="font-semibold text-gray-900">{row.target}</span>
+                          </span>
+                        </div>
+                        {row.linkedIssues.length > 0 ? (
+                          <div className="mt-1.5 space-y-1">
+                            {row.linkedIssues.map((iss) => (
+                              <div key={iss.id} className="rounded bg-gray-50 px-2 py-1 text-xs text-gray-700">
+                                <span className="font-medium text-mawi-700">→ IDS:</span> {iss.title}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 text-xs text-amber-700">
+                            Sin IDS vinculado — agregá uno o aclará en la reu
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    ) : (
+                      // On-track: una sola línea, solo para dar contexto.
+                      <div key={row.key} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 text-xs">
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${row.statusBadge.className.includes("emerald") ? "bg-emerald-500" : "bg-gray-300"}`} />
+                        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                          {row.sourceType === "metric" ? "Métrica" : "Rock"}
+                        </span>
+                        <span className="text-gray-900">{row.label}</span>
+                        <span className="text-gray-500">
+                          {row.actual}
+                          <span className="text-gray-400"> / {row.target}</span>
+                        </span>
+                        <span className="text-[10px] text-mawi-700">· {row.ownerName}</span>
+                      </div>
+                    ),
+                  )}
                 </div>
               )}
             </div>
@@ -676,18 +729,22 @@ export default async function L10Page() {
 
             <details className="rounded-lg border border-gray-200 bg-white">
               <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                Cobertura ({coverageRows.length} {orphanCount > 0 ? `· ${orphanCount} sin IDS` : "· todo cubierto"})
+                Cobertura ({attentionRows.length} en rojo{orphanCount > 0 ? ` · ${orphanCount} sin IDS` : " · todo cubierto"})
               </summary>
+              {/* En reunión solo importan los rojos: los verdes ya se leyeron en el pre-read. */}
               <div className="divide-y divide-gray-50 border-t border-gray-100 px-5">
-                {coverageRows.length === 0 ? (
+                {attentionRows.length === 0 ? (
                   <p className="py-3 text-sm text-emerald-600">Sin rojos ni rocks off-track</p>
                 ) : (
-                  coverageRows.map((row) => (
+                  attentionRows.map((row) => (
                     <div key={row.key} className="py-2 text-sm">
                       <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
                         {row.sourceType === "metric" ? "Métrica" : "Rock"}
                       </span>{" "}
                       <span className="text-gray-900">{row.label}</span>{" "}
+                      <span className="text-xs text-gray-500">
+                        {row.actual} <span className="text-gray-400">/ {row.target}</span>
+                      </span>{" "}
                       <span className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${row.statusBadge.className}`}>{row.statusBadge.label}</span>{" "}
                       <span className="text-[10px] text-mawi-700">· {row.ownerName}</span>
                       {row.linkedIssues.length === 0 && (
