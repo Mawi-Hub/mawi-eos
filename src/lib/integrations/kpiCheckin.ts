@@ -339,6 +339,24 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   );
 }
 
+// La reunión a la que se enganchan los challenges. El check-in corre el jueves
+// y el cron del L10 abre la reunión el viernes, así que acá normalmente todavía
+// no existe: se crea como "upcoming" y el cron del viernes la reutiliza.
+async function findOrCreateUpcomingMeeting() {
+  const quarter = await prisma.quarter.findFirst({ where: { isActive: true } });
+  if (!quarter) return null;
+
+  const existing = await prisma.l10Meeting.findFirst({
+    where: { quarterId: quarter.id, status: { not: "completed" } },
+    orderBy: { date: "desc" },
+  });
+  if (existing) return existing;
+
+  return prisma.l10Meeting.create({
+    data: { quarterId: quarter.id, date: new Date(), status: "upcoming", phase: "preread" },
+  });
+}
+
 // Opciones a las que un challenge puede colgarse: los rocks del quarter activo
 // de esa persona + las métricas vivas del tablero.
 async function linkOptions(userId: string): Promise<{ rocks: { id: string; title: string }[]; metrics: { id: string; name: string }[] }> {
@@ -558,22 +576,32 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
     return;
   }
 
-  const quarterId = session.preview ? null : await quarterIdForDate(new Date());
+  // Los challenges son los issues (IDS) de la reunión: van a L10Issue, que es
+  // lo que el L10 renderiza y vota. WinChallenge solo sostiene los wins.
+  const linked = resolved.filter((c) => c.rockId || c.metricId);
+  const dropped = resolved.filter((c) => !c.rockId && !c.metricId);
 
-  if (quarterId) {
-    for (const c of resolved) {
-      await prisma.winChallenge.create({
-        data: {
-          userId: session.userId,
-          quarterId,
-          reportDate: new Date(),
-          entryType: "challenge",
-          keyChallenge: c.detalle ? `${c.titulo} — ${c.detalle}` : c.titulo,
-          priority: c.prioridad ?? "medio",
-          linkedRockId: c.rockId,
-          linkedMetricId: c.metricId,
-        },
+  if (!session.preview && linked.length > 0) {
+    const meeting = await findOrCreateUpcomingMeeting();
+    if (meeting) {
+      const already = await prisma.l10Issue.count({
+        where: { meetingId: meeting.id, raisedById: session.userId },
       });
+      // Mismo tope que la UI: 3 issues por persona por reunión.
+      for (const c of linked.slice(0, Math.max(0, 3 - already))) {
+        await prisma.l10Issue.create({
+          data: {
+            meetingId: meeting.id,
+            raisedById: session.userId,
+            title: c.titulo,
+            description: c.detalle,
+            priority: c.prioridad ?? "medio",
+            linkedRockId: c.rockId,
+            linkedMetricId: c.metricId,
+            submittedAt: new Date(),
+          },
+        });
+      }
     }
   }
 
@@ -582,12 +610,12 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   const appUrl = process.env.NEXTAUTH_URL ?? "";
   const firstName = session.user.name.split(" ")[0];
   const challengeSummary = resolved.length
-    ? resolved
-        .map((c) => {
-          const link = c.vinculo_nombre && (c.rockId || c.metricId) ? ` → ${c.vinculo_nombre}` : " → ⚠️ sin vincular";
-          return `• ${c.titulo} (${c.prioridad})${link}`;
-        })
-        .join("\n")
+    ? [
+        ...linked.map((c) => `• ${c.titulo} (${c.prioridad}) → ${c.vinculo_nombre}`),
+        ...dropped.map(
+          (c) => `• ⚠️ ${c.titulo} — no quedó ligado a ningún Rock ni métrica, así que no entra a la reunión.`,
+        ),
+      ].join("\n")
     : "• (sin challenges esta semana)";
 
   await postSlackMessage(
@@ -596,7 +624,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
       ? `🧪 Fin de la prueba, ${firstName}. Estos challenges habría registrado:\n${challengeSummary}\n\n` +
           `No se guardó nada en el tablero. Así se va a ver el jueves de verdad. 🚀`
       : `🙌 Listo, ${firstName}. Quedó todo cargado para el viernes:\n${challengeSummary}\n\n` +
-          (appUrl ? `Lo ves en el tablero: ${appUrl}/wins-challenges\n` : "") +
+          (appUrl ? `Tus challenges ya están como issues del L10: ${appUrl}/l10\n` : "") +
           `¡Buen fin de semana! 🚀`,
   );
 }

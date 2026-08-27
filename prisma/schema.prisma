@@ -99,10 +99,9 @@ model ScorecardMetric {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  owner            User             @relation(fields: [ownerId], references: [id])
-  entries          ScorecardEntry[]
-  linkedIssues     L10Issue[]       @relation("issuesLinkedMetric")
-  linkedChallenges WinChallenge[]   @relation("winChallengeMetric")
+  owner        User             @relation(fields: [ownerId], references: [id])
+  entries      ScorecardEntry[]
+  linkedIssues L10Issue[]       @relation("issuesLinkedMetric")
 
   @@map("scorecard_metrics")
 }
@@ -145,10 +144,9 @@ model Rock {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  quarter          Quarter        @relation(fields: [quarterId], references: [id])
-  owner            User           @relation(fields: [ownerId], references: [id])
-  linkedIssues     L10Issue[]     @relation("issuesLinkedRock")
-  linkedChallenges WinChallenge[] @relation("winChallengeRock")
+  quarter      Quarter    @relation(fields: [quarterId], references: [id])
+  owner        User       @relation(fields: [ownerId], references: [id])
+  linkedIssues L10Issue[] @relation("issuesLinkedRock")
 
   @@map("rocks")
 }
@@ -164,17 +162,11 @@ model WinChallenge {
   keyChallenge   String?  @map("key_challenge") // Challenge description
   priority       String   @default("medio") // alto, medio, bajo (for challenges)
   followUpAction String?  @map("follow_up_action") // Next action (for challenges)
-  // Todo challenge debe colgar de un Rock o de una métrica del Scorecard; si no
-  // se puede vincular, es ruido operativo y no va a la reunión.
-  linkedRockId   String?  @map("linked_rock_id")
-  linkedMetricId String?  @map("linked_metric_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  user         User             @relation(fields: [userId], references: [id])
-  quarter      Quarter          @relation(fields: [quarterId], references: [id])
-  linkedRock   Rock?            @relation("winChallengeRock", fields: [linkedRockId], references: [id])
-  linkedMetric ScorecardMetric? @relation("winChallengeMetric", fields: [linkedMetricId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  quarter Quarter @relation(fields: [quarterId], references: [id])
 
   @@map("wins_challenges")
 }

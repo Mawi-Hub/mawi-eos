@@ -54,10 +54,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Abrir la de hoy — reutiliza la que ya exista para no duplicar.
+    // 2. Abrir la de hoy. Reutiliza cualquier reunión sin cerrar sin importar su
+    // fecha: el check-in del jueves ya pudo haber creado una para colgarle los
+    // challenges, y crear otra acá dejaría esos issues huérfanos.
     const existing = await prisma.l10Meeting.findFirst({
-      where: { quarterId: quarter.id, date: { gte: todayStart }, status: { not: "completed" } },
-      orderBy: { date: "asc" },
+      where: { quarterId: quarter.id, status: { not: "completed" } },
+      orderBy: { date: "desc" },
     });
 
     // Pre-read cerrado la tarde anterior, junto con el check-in de KPIs.
@@ -71,7 +73,9 @@ export async function GET(request: Request) {
     } else if (existing) {
       opened = await prisma.l10Meeting.update({
         where: { id: existing.id },
-        data: { status: "in_progress", phase: "preread", prereadDeadline },
+        // La fecha pasa a ser la de hoy: si la creó el check-in del jueves,
+        // la reunión es la de este viernes.
+        data: { date: now, status: "in_progress", phase: "preread", prereadDeadline },
       });
     } else {
       opened = await prisma.l10Meeting.create({
