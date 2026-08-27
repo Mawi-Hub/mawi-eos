@@ -10,6 +10,10 @@
     {
       "path": "/api/checkin/kpi",
       "schedule": "0 23 * * 4"
+    },
+    {
+      "path": "/api/l10/cron",
+      "schedule": "0 13 * * 5"
     }
   ]
 }

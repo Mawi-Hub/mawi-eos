@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { canManageMeetings } from "@/lib/l10Permissions";
 
 export async function POST(request: Request) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ceo") return NextResponse.json({ error: "Solo el CEO puede crear reuniones L10" }, { status: 403 });
+  if (!(await canManageMeetings(session?.user))) {
+    return NextResponse.json(
+      { error: "Solo el CEO o el facilitador pueden crear reuniones L10" },
+      { status: 403 },
+    );
+  }
 
   const { quarterId } = await request.json();
 
@@ -23,8 +29,11 @@ const VALID_PHASES = new Set(["preread", "voting", "ids", "commitments", "closed
 
 export async function PATCH(request: Request) {
   const session = await auth();
-  if (!session?.user || session.user.role !== "ceo") {
-    return NextResponse.json({ error: "Solo el CEO puede modificar reuniones" }, { status: 403 });
+  if (!(await canManageMeetings(session?.user))) {
+    return NextResponse.json(
+      { error: "Solo el CEO o el facilitador pueden modificar reuniones" },
+      { status: 403 },
+    );
   }
 
   const { meetingId, status, notes, phase, prereadDeadline } = await request.json();

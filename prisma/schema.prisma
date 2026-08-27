@@ -12,6 +12,9 @@ model User {
   email        String   @unique
   name         String
   role         String   // ceo, sales, cs, product, engineering
+  // Facilita el L10: puede crear, abrir, mover de fase y cerrar reuniones.
+  // Independiente del rol para que se pueda pasar a otra persona sin tocar código.
+  isFacilitator Boolean @default(false) @map("is_facilitator")
   passwordHash String   @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

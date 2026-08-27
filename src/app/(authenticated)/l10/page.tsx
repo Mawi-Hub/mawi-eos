@@ -14,6 +14,8 @@ import { VoteButton } from "./vote-button";
 import { StartMeetingButton } from "./start-meeting-button";
 import { PreReadChecklist } from "./preread-checklist";
 import { DeleteIssueButton } from "./delete-issue-button";
+import { PhaseStepper } from "./phase-stepper";
+import { canManageMeetings } from "@/lib/l10Permissions";
 
 export default async function L10Page() {
   const session = await auth();
@@ -209,6 +211,9 @@ export default async function L10Page() {
   const currentUserRead = session?.user?.id ? readUserIds.has(session.user.id) : false;
 
   const isCeo = session?.user?.role === "ceo";
+  // Quien facilita opera el ciclo de la reunión (abrir, fases, cerrar), aunque
+  // no sea el CEO.
+  const canManage = await canManageMeetings(session?.user);
   const currentUserId = session?.user?.id || "";
   const currentUser = users.find((u) => u.id === currentUserId);
 
@@ -306,7 +311,7 @@ export default async function L10Page() {
             Preparación semanal — Q{activeQuarter.quarter} {activeQuarter.year}
           </p>
         </div>
-        {session?.user?.role === "ceo" && <CreateMeetingButton quarterId={activeQuarter.id} />}
+        {canManage && <CreateMeetingButton quarterId={activeQuarter.id} />}
       </div>
 
       {meeting && currentUser && checklistItems.length > 0 && (
@@ -345,14 +350,16 @@ export default async function L10Page() {
               {meeting.status === "in_progress" ? "Abierta" : "Por empezar"}
             </span>
             <MarkAsReadButton meetingId={meeting.id} alreadyRead={currentUserRead} items={readSections} />
-            {session?.user?.role === "ceo" && meeting.status === "upcoming" && (
-              <StartMeetingButton meetingId={meeting.id} />
-            )}
-            {session?.user?.role === "ceo" && meeting.status === "in_progress" && (
+            {canManage && meeting.status === "upcoming" && <StartMeetingButton meetingId={meeting.id} />}
+            {canManage && meeting.status === "in_progress" && (
               <CloseMeetingButton meetingId={meeting.id} currentNotes={meeting.notes || ""} isCompleted={false} />
             )}
           </div>
         </div>
+      )}
+
+      {meeting && meeting.status === "in_progress" && (
+        <PhaseStepper meetingId={meeting.id} currentPhase={meeting.phase} canManage={canManage} />
       )}
 
       <div className={`mx-auto w-full space-y-6 ${inMeeting ? "max-w-5xl" : "max-w-3xl"}`}>
@@ -713,7 +720,7 @@ export default async function L10Page() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Completada</span>
-                    {session?.user?.role === "ceo" && (
+                    {canManage && (
                       <CloseMeetingButton meetingId={pm.id} currentNotes={pm.notes || ""} isCompleted={true} />
                     )}
                   </div>
