@@ -15,10 +15,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const dryRun = new URL(request.url).searchParams.get("dryRun") === "1";
+  const query = new URL(request.url).searchParams;
+  const dryRun = query.get("dryRun") === "1";
+  const preview = query.get("preview") === "1";
+  const onlyEmail = query.get("onlyEmail") ?? undefined;
 
   try {
-    const result = await startKpiCheckins({ dryRun });
+    const result = await startKpiCheckins({ dryRun, preview, onlyEmail });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("[kpi-checkin] Error iniciando check-ins:", error);

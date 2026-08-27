@@ -46,6 +46,9 @@ model KpiCheckinSession {
   slackChannelId String   @map("slack_channel_id")
   weekStart      DateTime @map("week_start")
   step           String   @default("wins") // wins, metrics, challenges, done
+  // Sesión de prueba: recorre los mismos pasos pero no escribe wins,
+  // challenges ni entradas de scorecard.
+  preview        Boolean  @default(false)
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

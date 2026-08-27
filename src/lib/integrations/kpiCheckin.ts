@@ -155,6 +155,16 @@ async function userManualMetrics(userId: string): Promise<ScorecardMetric[]> {
   });
 }
 
+// En prueba mostramos todos los KPIs manuales del tablero (el tester puede no
+// tener ninguno propio) — igual no se escribe nada.
+async function metricsForSession(session: KpiCheckinSession): Promise<ScorecardMetric[]> {
+  if (!session.preview) return userManualMetrics(session.userId);
+  return prisma.scorecardMetric.findMany({
+    where: { isActive: true, dataSource: "manual" },
+    orderBy: { sortOrder: "asc" },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Cron entry: abrir el DM de cada líder y pedir el WIN primero
 // ---------------------------------------------------------------------------
@@ -165,8 +175,17 @@ export type KpiCheckinStartResult = {
   dryRun: boolean;
 };
 
-export async function startKpiCheckins(options?: { dryRun?: boolean }): Promise<KpiCheckinStartResult> {
+export type StartKpiCheckinOptions = {
+  dryRun?: boolean;
+  // Solo a esta persona (email del app), aunque no tenga KPIs manuales propios.
+  onlyEmail?: string;
+  // Recorre el flujo completo sin escribir nada. Útil para probar en vivo.
+  preview?: boolean;
+};
+
+export async function startKpiCheckins(options?: StartKpiCheckinOptions): Promise<KpiCheckinStartResult> {
   const dryRun = options?.dryRun ?? false;
+  const preview = options?.preview ?? false;
   const metrics = await prisma.scorecardMetric.findMany({
     where: { isActive: true, dataSource: "manual" },
     include: { owner: true },
@@ -180,10 +199,19 @@ export async function startKpiCheckins(options?: { dryRun?: boolean }): Promise<
     byOwner.set(metric.ownerId, group);
   }
 
+  let targets = [...byOwner.values()].map((g) => g.owner);
+  if (options?.onlyEmail) {
+    const user = await prisma.user.findUnique({ where: { email: options.onlyEmail } });
+    if (!user) {
+      return { sent: [], skipped: [{ name: options.onlyEmail, reason: "no existe en el app" }], dryRun };
+    }
+    targets = [user];
+  }
+
   const weekStart = mondayOfWeek(new Date());
   const result: KpiCheckinStartResult = { sent: [], skipped: [], dryRun };
 
-  for (const { owner } of byOwner.values()) {
+  for (const owner of targets) {
     const existing = await prisma.kpiCheckinSession.findUnique({
       where: { userId_weekStart: { userId: owner.id, weekStart } },
     });
@@ -210,13 +238,14 @@ export async function startKpiCheckins(options?: { dryRun?: boolean }): Promise<
     }
 
     await prisma.kpiCheckinSession.create({
-      data: { userId: owner.id, slackUserId, slackChannelId: dmChannel, weekStart, step: "wins" },
+      data: { userId: owner.id, slackUserId, slackChannelId: dmChannel, weekStart, step: "wins", preview },
     });
 
     const firstName = owner.name.split(" ")[0];
     await postSlackMessage(
       dmChannel,
-      `¡Hola ${firstName}! 👋 Check-in para la reunión de management del viernes.\n\n` +
+      (preview ? "🧪 *MODO PRUEBA* — nada de lo que respondas se guarda.\n\n" : "") +
+        `¡Hola ${firstName}! 👋 Check-in para la reunión de management del viernes.\n\n` +
         `Primero lo bueno: *¿cuál fue tu WIN de la semana?* 🏆\n` +
         `_Contámelo en una o dos líneas — después te pido tus KPIs._`,
     );
@@ -273,7 +302,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
 }`,
   );
 
-  if (extracted?.win) {
+  if (extracted?.win && !session.preview) {
     const quarterId = await quarterIdForDate(new Date());
     if (quarterId) {
       await prisma.winChallenge.create({
@@ -289,10 +318,14 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
     }
   }
 
-  const metrics = await userManualMetrics(session.userId);
+  const metrics = await metricsForSession(session);
   await advanceStep(session.id, "metrics");
 
-  const ack = extracted?.win ? "💪 Anotado el win." : "Va, sin win esta semana — pasa. 💪";
+  const ack = extracted?.win
+    ? session.preview
+      ? `🧪 Leí este win (no se guardó): _${extracted.win}_`
+      : "💪 Anotado el win."
+    : "Va, sin win esta semana — pasa. 💪";
   await postSlackMessage(
     session.slackChannelId,
     `${ack}\n\nAhora tus KPIs. Mandámelos en un solo mensaje:\n${metrics.map(metricLine).join("\n")}\n` +
@@ -304,7 +337,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
 // y pedir challenges. Si faltan métricas se queda en este paso hasta que las
 // mande o diga "listo".
 async function handleMetrics(session: SessionWithUser, text: string): Promise<void> {
-  const metrics = await userManualMetrics(session.userId);
+  const metrics = await metricsForSession(session);
   const metricList = metrics
     .map((m) => `- "${m.name}" (unidad: ${m.unit ?? "número"}, frecuencia: ${m.frequency})`)
     .join("\n");
@@ -337,13 +370,22 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
 
   const values = extracted?.valores ?? [];
   const byName = new Map(metrics.map((m) => [m.name, m]));
-  const savedNames: string[] = [];
+  const savedNames: string[] = []; // nombres de métrica, para calcular faltantes
+  const savedLabels: string[] = []; // versión legible para el mensaje de Slack
 
   for (const v of values) {
     const metric = byName.get(v.nombre);
     if (!metric || typeof v.valor !== "number" || Number.isNaN(v.valor)) continue;
 
     const { start, end } = currentPeriod(metric.frequency);
+
+    if (session.preview) {
+      const status = calculateStatus(v.valor, metric.targetNumeric, metric.targetDirection);
+      savedNames.push(metric.name);
+      savedLabels.push(`${metric.name} → ${v.display ?? v.valor} ${STATUS_EMOJI[status] ?? ""}`.trim());
+      continue;
+    }
+
     const quarterId = await quarterIdForDate(start);
     if (!quarterId) continue;
 
@@ -369,6 +411,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
       },
     });
     savedNames.push(metric.name);
+    savedLabels.push(metric.name);
   }
 
   if (savedNames.length === 0 && !extracted?.continuar) {
@@ -384,7 +427,8 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   if (missing.length > 0 && !extracted?.continuar) {
     await postSlackMessage(
       session.slackChannelId,
-      `✅ Guardé: ${savedNames.join(", ")}.\nMe falta:\n${missing.map(metricLine).join("\n")}\n` +
+      `${session.preview ? "🧪 Leí (sin guardar)" : "✅ Guardé"}: ${savedLabels.join(", ")}.\n` +
+        `Me falta:\n${missing.map(metricLine).join("\n")}\n` +
         `_Mandámelos o escribí *listo* para seguir._`,
     );
     return;
@@ -394,7 +438,11 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   const summary = await buildScorecardSummary(session.userId);
   await postSlackMessage(
     session.slackChannelId,
-    `${savedNames.length ? `✅ KPIs guardados: ${savedNames.join(", ")}.` : "Va, seguimos sin cargar KPIs."}\n\n` +
+    `${
+      savedLabels.length
+        ? `${session.preview ? "🧪 KPIs leídos (sin guardar)" : "✅ KPIs guardados"}: ${savedLabels.join(", ")}.`
+        : "Va, seguimos sin cargar KPIs."
+    }\n\n` +
       `Así va el tablero:\n${summary}\n\n` +
       `Último paso: *¿qué challenges traés para la reunión?* 🧱\n` +
       `_Máximo 3, idealmente los que pegan a retención/NDR. Si no tenés, decime "ninguno"._`,
@@ -420,7 +468,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   );
 
   const challenges = (extracted?.challenges ?? []).slice(0, 3);
-  const quarterId = await quarterIdForDate(new Date());
+  const quarterId = session.preview ? null : await quarterIdForDate(new Date());
 
   if (quarterId) {
     for (const c of challenges) {
@@ -447,9 +495,12 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
 
   await postSlackMessage(
     session.slackChannelId,
-    `🙌 Listo, ${firstName}. Quedó todo cargado para el viernes:\n${challengeSummary}\n\n` +
-      (appUrl ? `Lo ves en el tablero: ${appUrl}/wins-challenges\n` : "") +
-      `¡Buen fin de semana! 🚀`,
+    session.preview
+      ? `🧪 Fin de la prueba, ${firstName}. Estos challenges habría registrado:\n${challengeSummary}\n\n` +
+          `No se guardó nada en el tablero. Así se va a ver el jueves de verdad. 🚀`
+      : `🙌 Listo, ${firstName}. Quedó todo cargado para el viernes:\n${challengeSummary}\n\n` +
+          (appUrl ? `Lo ves en el tablero: ${appUrl}/wins-challenges\n` : "") +
+          `¡Buen fin de semana! 🚀`,
   );
 }
 
