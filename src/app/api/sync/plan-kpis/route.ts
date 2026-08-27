@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { calculateStatus } from "@/lib/utils";
 import {
   getMRRMetrics,
   getCustomerChurnRate,
@@ -234,6 +235,20 @@ export async function POST(request: Request) {
   });
   const metricByName = new Map(scorecardMetrics.map((m) => [m.name, m]));
 
+  // Proyección del mes por KPI. El semáforo se calcula contra esto y no contra
+  // la meta final: en agosto, "MRR en verde" tiene que significar "vas según la
+  // rampa de agosto", no "ya llegaste al número de diciembre".
+  //
+  // Ojo con las unidades: el Plan guarda los porcentajes como fracción (0.9453)
+  // y el Scorecard como entero (94.53), así que hay que escalar igual que el
+  // actual antes de comparar.
+  const projectedBySlug = new Map<string, Map<number, number>>();
+  for (const kpi of plan.kpis) {
+    const byPeriod = new Map<number, number>();
+    for (const e of kpi.entries) byPeriod.set(firstOfMonthUTC(e.period).getTime(), e.projected);
+    projectedBySlug.set(kpi.slug, byPeriod);
+  }
+
   const quarters = await prisma.quarter.findMany();
   function findQuarterForDate(d: Date): string | undefined {
     return quarters.find((q) => d >= q.startDate && d <= q.endDate)?.id;
@@ -266,14 +281,27 @@ export async function POST(request: Request) {
       const value = m.isPct ? raw * 100 : raw;
       const periodEnd = lastOfMonthUTC(periodStart);
 
+      const projectedRaw = projectedBySlug.get(m.slug)?.get(periodMs);
+      const projected =
+        projectedRaw === undefined ? null : m.isPct ? projectedRaw * 100 : projectedRaw;
+      const status = calculateStatus(
+        value,
+        projected ?? metric.targetNumeric,
+        metric.targetDirection,
+      );
+      const notes =
+        projected !== null
+          ? `ChartMogul sync ${ymd(today)} · plan del mes ${projected}`
+          : `ChartMogul sync ${ymd(today)}`;
+
       await prisma.scorecardEntry.upsert({
         where: { metricId_periodStart: { metricId: metric.id, periodStart } },
         update: {
           actualValue: value,
           actualDisplay: null,
           autoSynced: true,
-          status: "on_track",
-          notes: `ChartMogul sync ${ymd(today)}`,
+          status,
+          notes,
         },
         create: {
           metricId: metric.id,
@@ -282,8 +310,8 @@ export async function POST(request: Request) {
           periodEnd,
           actualValue: value,
           autoSynced: true,
-          status: "on_track",
-          notes: `ChartMogul sync ${ymd(today)}`,
+          status,
+          notes,
         },
       });
       updated++;
@@ -307,13 +335,15 @@ export async function POST(request: Request) {
         continue;
       }
       const periodEnd = lastOfMonthUTC(periodStart);
+      // Métricas calculadas sin KPI de plan detrás: contra su propia meta.
+      const status = calculateStatus(value, metric.targetNumeric, metric.targetDirection);
       await prisma.scorecardEntry.upsert({
         where: { metricId_periodStart: { metricId: metric.id, periodStart } },
         update: {
           actualValue: value,
           actualDisplay: null,
           autoSynced: true,
-          status: "on_track",
+          status,
           notes: `ChartMogul sync ${ymd(today)}`,
         },
         create: {
@@ -323,7 +353,7 @@ export async function POST(request: Request) {
           periodEnd,
           actualValue: value,
           autoSynced: true,
-          status: "on_track",
+          status,
           notes: `ChartMogul sync ${ymd(today)}`,
         },
       });
