@@ -155,12 +155,12 @@ export default async function L10Page() {
 
   const isRed = (status?: string) => status === "off_track" || status === "riesgo";
 
-  // Valor de la última entrada, respetando el display manual y la unidad.
-  function metricActual(entry?: { actualValue: number | null; actualDisplay: string | null }): string {
-    if (!entry) return "sin dato";
-    if (entry.actualDisplay) return entry.actualDisplay;
-    if (entry.actualValue === null) return "sin dato";
-    return String(entry.actualValue);
+  // Formatea un número con la unidad de la métrica ($1,234 / 85%).
+  function withUnit(value: number, unit: string): string {
+    const n = Number.isInteger(value) ? value.toLocaleString("en-US") : value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    if (unit === "%") return `${n}%`;
+    if (unit === "$") return `$${n}`;
+    return n;
   }
 
   for (const m of allMetrics) {
@@ -168,7 +168,16 @@ export default async function L10Page() {
     const status = entry?.status || "pending";
     const streak = redStreakByMetric.get(m.id) || 0;
     const unit = m.unit === "%" || m.unit === "$" ? m.unit : "";
-    const actual = metricActual(entry);
+    const actual =
+      entry?.actualDisplay ??
+      (entry?.actualValue !== null && entry?.actualValue !== undefined
+        ? withUnit(entry.actualValue, unit)
+        : "sin dato");
+    // Lo esperado en ESTE período (la rampa del mes), no la meta de cierre.
+    const expected =
+      entry?.expectedValue !== null && entry?.expectedValue !== undefined
+        ? withUnit(entry.expectedValue, unit)
+        : (m.targetValue ?? "—");
     coverageRows.push({
       key: `metric:${m.id}`,
       sourceType: "metric",
@@ -180,8 +189,8 @@ export default async function L10Page() {
       linkedIssues: issuesByMetric.get(m.id) || [],
       chronicWeeks: streak >= CHRONIC_RED_THRESHOLD ? streak : null,
       needsIds: isRed(status),
-      actual: actual === "sin dato" || !unit ? actual : unit === "%" ? `${actual}%` : `${unit}${actual}`,
-      target: m.targetValue ?? "—",
+      actual,
+      target: expected,
     });
   }
   for (const r of allActiveRocks) {

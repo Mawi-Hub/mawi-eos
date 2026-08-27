@@ -299,6 +299,7 @@ export async function POST(request: Request) {
         update: {
           actualValue: value,
           actualDisplay: null,
+          expectedValue: projected ?? metric.targetNumeric,
           autoSynced: true,
           status,
           notes,
@@ -309,6 +310,7 @@ export async function POST(request: Request) {
           periodStart,
           periodEnd,
           actualValue: value,
+          expectedValue: projected ?? metric.targetNumeric,
           autoSynced: true,
           status,
           notes,
@@ -342,6 +344,7 @@ export async function POST(request: Request) {
         update: {
           actualValue: value,
           actualDisplay: null,
+          expectedValue: metric.targetNumeric,
           autoSynced: true,
           status,
           notes: `ChartMogul sync ${ymd(today)}`,
@@ -352,6 +355,7 @@ export async function POST(request: Request) {
           periodStart,
           periodEnd,
           actualValue: value,
+          expectedValue: metric.targetNumeric,
           autoSynced: true,
           status,
           notes: `ChartMogul sync ${ymd(today)}`,

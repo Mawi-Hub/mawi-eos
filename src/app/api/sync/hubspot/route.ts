@@ -80,6 +80,7 @@ export async function POST() {
           update: {
             actualValue: count,
             actualDisplay: null,
+            expectedValue: demosMetric.targetNumeric,
             autoSynced: true,
             status: calculateStatus(count, demosMetric.targetNumeric, demosMetric.targetDirection),
             notes: `HubSpot sync ${new Date().toISOString().split("T")[0]}`,
@@ -90,6 +91,7 @@ export async function POST() {
             periodStart,
             periodEnd: new Date(weekMs + 6 * 24 * 60 * 60 * 1000),
             actualValue: count,
+            expectedValue: demosMetric.targetNumeric,
             autoSynced: true,
             status: calculateStatus(count, demosMetric.targetNumeric, demosMetric.targetDirection),
             notes: `HubSpot sync ${new Date().toISOString().split("T")[0]}`,

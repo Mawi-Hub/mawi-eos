@@ -46,11 +46,12 @@ async function main() {
         projected ?? metric.targetNumeric,
         metric.targetDirection,
       );
-      if (status === entry.status) continue;
+      const expected = projected ?? metric.targetNumeric;
+      if (status === entry.status && entry.expectedValue === expected) continue;
 
       console.log(
         `  ${m.name.padEnd(22)} ${entry.periodStart.toISOString().slice(0, 7)}  ` +
-          `actual=${entry.actualValue}  plan=${projected ?? "meta final"}  ${entry.status} → ${status}`,
+          `actual=${entry.actualValue}  esperado=${expected ?? "—"}  ${entry.status} → ${status}`,
       );
       changed++;
       if (apply) {
@@ -58,6 +59,7 @@ async function main() {
           where: { id: entry.id },
           data: {
             status,
+            expectedValue: expected,
             notes: projected !== null ? `Recalculado vs plan del mes ${projected}` : entry.notes,
           },
         });

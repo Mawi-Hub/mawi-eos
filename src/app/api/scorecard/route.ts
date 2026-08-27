@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     update: {
       actualValue,
       actualDisplay: actualDisplay || null,
+      expectedValue: metric.targetNumeric,
       status,
       notes: notes || null,
       enteredById: session.user.id,
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
       periodEnd,
       actualValue,
       actualDisplay: actualDisplay || null,
+      expectedValue: metric.targetNumeric,
       status,
       notes: notes || null,
       enteredById: session.user.id,

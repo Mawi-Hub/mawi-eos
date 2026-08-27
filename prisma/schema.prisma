@@ -114,6 +114,10 @@ model ScorecardEntry {
   periodEnd     DateTime @map("period_end")
   actualValue   Float?   @map("actual_value")
   actualDisplay String?  @map("actual_display")
+  // Lo que se esperaba en ESTE período: la proyección del mes según el plan
+  // para las métricas sincronizadas, o la meta de la métrica para el resto.
+  // Se guarda acá para que las vistas no tengan que reconstruir la rampa.
+  expectedValue Float?   @map("expected_value")
   status        String   @default("pending") // on_track, off_track, riesgo, pending
   notes         String?
   enteredById   String?  @map("entered_by_id")

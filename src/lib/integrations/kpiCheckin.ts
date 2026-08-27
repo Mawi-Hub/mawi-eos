@@ -454,6 +454,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
       update: {
         actualValue: v.valor,
         actualDisplay: v.display,
+        expectedValue: metric.targetNumeric,
         status: calculateStatus(v.valor, metric.targetNumeric, metric.targetDirection),
         notes: `Slack check-in ${new Date().toISOString().split("T")[0]}`,
         enteredById: session.userId,
@@ -465,6 +466,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
         periodEnd: end,
         actualValue: v.valor,
         actualDisplay: v.display,
+        expectedValue: metric.targetNumeric,
         status: calculateStatus(v.valor, metric.targetNumeric, metric.targetDirection),
         notes: `Slack check-in ${new Date().toISOString().split("T")[0]}`,
         enteredById: session.userId,
