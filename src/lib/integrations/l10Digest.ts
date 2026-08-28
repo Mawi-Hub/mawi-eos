@@ -4,9 +4,10 @@
 // wins → métricas en rojo/riesgo → challenges (los IDS de la reunión). La
 // idea es que nadie llegue en frío aunque no haya abierto el tablero.
 //
-// Destino: L10_CHANNEL_ID si está seteado; si no, DM a cada líder. El default
-// es DM a propósito — el resumen trae MRR y churn, y el canal de check-ins es
-// de todo el equipo.
+// Destino: L10_CHANNEL_ID si está seteado (acepta el ID `C...` o `#nombre`);
+// si no, DM a cada líder. El default es DM a propósito — el resumen trae MRR y
+// churn, y el canal de check-ins es de toda la empresa. Para postear en un
+// canal, el bot tiene que estar invitado ahí (`/invite @mawi_checkins`).
 
 import { prisma } from "@/lib/db";
 import { getCurrentWeekStartCR } from "@/lib/utils";
@@ -23,6 +24,16 @@ function fmt(value: number | null | undefined, unit: string | null): string {
   if (unit === "%") return `${n}%`;
   if (unit === "$") return `$${n}`;
   return n;
+}
+
+// Cuántas semanas seguidas lleva la métrica en rojo/riesgo.
+function redStreak(entries: Array<{ status: string }>): number {
+  let streak = 0;
+  for (const e of entries) {
+    if (e.status === "off_track" || e.status === "riesgo") streak++;
+    else break;
+  }
+  return streak;
 }
 
 export async function buildL10Digest(): Promise<string | null> {
@@ -49,7 +60,7 @@ export async function buildL10Digest(): Promise<string | null> {
     }),
     prisma.scorecardMetric.findMany({
       where: { isActive: true },
-      include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 1 } },
+      include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 5 } },
       orderBy: { sortOrder: "asc" },
     }),
   ]);
@@ -59,57 +70,85 @@ export async function buildL10Digest(): Promise<string | null> {
     include: { owner: true },
   });
 
-  const lines: string[] = ["🗓️ *L10 en 15 minutos* — esto es lo que hay sobre la mesa\n"];
+  const issues = meeting?.issues ?? [];
+  const issuesByMetric = new Set(issues.map((i) => i.linkedMetricId).filter(Boolean));
+  const issuesByRock = new Set(issues.map((i) => i.linkedRockId).filter(Boolean));
+  const red = metrics.filter((m) => ["off_track", "riesgo"].includes(m.entries[0]?.status ?? ""));
+  const uncovered =
+    red.filter((m) => !issuesByMetric.has(m.id)).length + rocks.filter((r) => !issuesByRock.has(r.id)).length;
+
+  const fecha = new Date().toLocaleDateString("es-CR", { weekday: "long", day: "numeric", month: "long" });
+
+  const lines: string[] = [
+    `🗓️ *L10 de hoy — ${fecha}, arranca en 15 minutos*`,
+    `Esto es lo que está sobre la mesa. Si algo de acá les toca, lleguen con la respuesta lista.\n`,
+  ];
 
   // 1. WINS
-  lines.push(`🏆 *Wins de la semana* (${wins.length})`);
+  lines.push(`🏆 *Wins de la semana* — ${wins.length} cargado${wins.length === 1 ? "" : "s"}`);
   if (wins.length === 0) {
     lines.push("• Nadie cargó wins esta semana.");
   } else {
     for (const w of wins) {
-      lines.push(`• *${w.user.name.split(" ")[0]}:* ${w.wins}${w.result ? ` — ${w.result}` : ""}`);
+      lines.push(`• *${w.user.name.split(" ")[0]}:* ${w.wins}${w.result ? `\n     _Resultado: ${w.result}_` : ""}`);
     }
   }
 
   // 2. ROJOS Y RIESGO
-  const issuesByMetric = new Set((meeting?.issues ?? []).map((i) => i.linkedMetricId).filter(Boolean));
-  const issuesByRock = new Set((meeting?.issues ?? []).map((i) => i.linkedRockId).filter(Boolean));
-
-  const red = metrics.filter((m) => ["off_track", "riesgo"].includes(m.entries[0]?.status ?? ""));
-  lines.push(`\n🔴 *En rojo o riesgo* (${red.length + rocks.length})`);
+  lines.push(
+    `\n🔴 *En rojo o riesgo* — ${red.length + rocks.length} en total` +
+      (uncovered > 0 ? `, ${uncovered} sin IDS que lo cubra` : ", todos cubiertos"),
+  );
   if (red.length + rocks.length === 0) {
     lines.push("• Todo el tablero en verde.");
   } else {
     for (const m of red) {
       const e = m.entries[0];
       const dot = e?.status === "off_track" ? "🔴" : "🟡";
-      const cover = issuesByMetric.has(m.id) ? "" : "  _· sin IDS_";
+      const streak = redStreak(m.entries);
+      const cronico = streak >= 4 ? ` · ⚠️ ${streak} períodos seguidos en rojo` : "";
+      const cover = issuesByMetric.has(m.id) ? "" : " · *sin IDS*";
       lines.push(
-        `${dot} *${m.name}* — ${fmt(e?.actualValue, m.unit)} vs ${fmt(e?.expectedValue ?? m.targetNumeric, m.unit)} esperado · ${m.owner.name.split(" ")[0]}${cover}`,
+        `${dot} *${m.name}* — va en ${fmt(e?.actualValue, m.unit)}, se esperaba ${fmt(e?.expectedValue ?? m.targetNumeric, m.unit)}\n` +
+          `     _Responsable: ${m.owner.name.split(" ")[0]}${cronico}${cover}_`,
       );
     }
     for (const r of rocks) {
       const dot = r.status === "off_track" ? "🔴" : "🟡";
-      const cover = issuesByRock.has(r.id) ? "" : "  _· sin IDS_";
-      lines.push(`${dot} *Rock: ${r.title}* — ${r.progress}% de 100% · ${r.owner.name.split(" ")[0]}${cover}`);
+      const cover = issuesByRock.has(r.id) ? "" : " · *sin IDS*";
+      lines.push(
+        `${dot} *Rock: ${r.title}* — ${r.progress}% de avance\n` +
+          `     _Responsable: ${r.owner.name.split(" ")[0]}${r.risk ? ` · Riesgo: ${r.risk}` : ""}${cover}_`,
+      );
     }
   }
 
   // 3. CHALLENGES / IDS
-  const issues = meeting?.issues ?? [];
-  lines.push(`\n🧱 *Challenges para hoy* (${issues.length})`);
+  lines.push(`\n🧱 *Challenges para discutir* — ${issues.length}`);
   if (issues.length === 0) {
-    lines.push("• Nadie levantó challenges. Si llegamos así, la reu es de 10 minutos.");
+    lines.push("• Nadie levantó challenges esta semana.");
   } else {
     for (const i of issues) {
       const link = i.linkedRock?.title ?? i.linkedMetric?.name ?? "sin vínculo";
       const votes = i.votes.length ? ` · ${i.votes.length} voto${i.votes.length > 1 ? "s" : ""}` : "";
-      lines.push(`• [${i.priority}] *${i.raisedBy.name.split(" ")[0]}:* ${i.title}\n     _→ ${link}${votes}_`);
+      const detalle = i.description ? `\n     ${i.description}` : "";
+      lines.push(
+        `• *${i.raisedBy.name.split(" ")[0]}* — ${i.title}${detalle}\n` +
+          `     _Prioridad ${i.priority} · Ligado a: ${link}${votes}_`,
+      );
     }
   }
 
+  // 4. QUIÉN NO CARGÓ NADA
+  const leaders = await prisma.user.findMany({ where: { role: { in: LEADERSHIP_ROLES } } });
+  const participaron = new Set([...wins.map((w) => w.userId), ...issues.map((i) => i.raisedById)]);
+  const faltantes = leaders.filter((u) => !participaron.has(u.id));
+  if (faltantes.length > 0) {
+    lines.push(`\n⏳ *Sin cargar nada esta semana:* ${faltantes.map((u) => u.name.split(" ")[0]).join(", ")}`);
+  }
+
   const appUrl = process.env.NEXTAUTH_URL;
-  if (appUrl) lines.push(`\n📊 Tablero completo: ${appUrl}/l10`);
+  if (appUrl) lines.push(`\n📊 Tablero completo y votación: ${appUrl}/l10`);
 
   return lines.join("\n");
 }
@@ -123,7 +162,7 @@ export async function sendL10Digest(options?: { dryRun?: boolean }): Promise<{
   const text = await buildL10Digest();
   if (!text) return { text: null, recipients: [], dryRun };
 
-  const channel = process.env.L10_CHANNEL_ID;
+  const channel = process.env.L10_CHANNEL_ID?.trim();
   if (channel) {
     if (!dryRun) await postSlackMessage(channel, text);
     return { text, recipients: [channel], dryRun };
