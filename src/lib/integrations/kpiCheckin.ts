@@ -68,7 +68,7 @@ export async function lookupSlackUserByEmail(email: string): Promise<string | nu
   return data.ok ? data.user?.id ?? null : null;
 }
 
-async function openDm(slackUserId: string): Promise<string | null> {
+export async function openDm(slackUserId: string): Promise<string | null> {
   const data = (await slackApi("conversations.open", { users: slackUserId })) as {
     ok?: boolean;
     channel?: { id?: string };
