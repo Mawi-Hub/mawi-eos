@@ -13,12 +13,15 @@ import {
   Users,
   Network,
   Compass,
+  BookOpen,
+  ExternalLink,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/dashboard", label: "CEO Dashboard", icon: LayoutDashboard, ceoOnly: true },
+  { href: "https://app.notion.com/p/3a59223bd33080f9a8bff8d161512f59", label: "Handbook", icon: BookOpen, ceoOnly: false },
   { href: "/plan", label: "Plan H2", icon: Compass, ceoOnly: false },
   { href: "/scorecard", label: "Scorecard", icon: Target, ceoOnly: false },
   { href: "/rocks", label: "Rocks", icon: Mountain, ceoOnly: false },
@@ -45,11 +48,16 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
 
       <nav className="flex-1 space-y-1 px-3 py-4">
         {filteredNav.map((item) => {
-          const isActive = pathname.startsWith(item.href);
+          const isExternal = item.href.startsWith("https://");
+          const isActive = !isExternal && pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
+              target={isExternal ? "_blank" : undefined}
+              rel={isExternal ? "noopener noreferrer" : undefined}
+              prefetch={isExternal ? false : undefined}
+              aria-label={isExternal ? `${item.label} en Notion (abre en otra pestaña)` : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive
@@ -59,6 +67,7 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
             >
               <item.icon className={cn("h-4 w-4", isActive ? "text-mawi-600" : "")} />
               {item.label}
+              {isExternal && <ExternalLink className="ml-auto h-3.5 w-3.5" aria-hidden="true" />}
             </Link>
           );
         })}
