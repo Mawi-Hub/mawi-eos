@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,10 +17,8 @@ export const maxDuration = 60;
 //
 // `?dryRun=1` reporta qué haría sin tocar nada.
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   const dryRun = new URL(request.url).searchParams.get("dryRun") === "1";
 
@@ -46,6 +45,10 @@ export async function GET(request: Request) {
           data: {
             status: "completed",
             phase: "closed",
+            // Cierre de sistema: nunca dispara el resumen de management.
+            closeOrigin: "system_cron",
+            closedAt: now,
+            version: { increment: 1 },
             notes: m.notes
               ? `${m.notes}\n\n(Cerrada automáticamente el ${todayStart.toISOString().split("T")[0]}.)`
               : `Cerrada automáticamente el ${todayStart.toISOString().split("T")[0]}.`,

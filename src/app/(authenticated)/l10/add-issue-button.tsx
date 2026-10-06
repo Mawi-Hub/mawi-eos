@@ -21,6 +21,8 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
   const [linkKind, setLinkKind] = useState<"rock" | "metric">("rock");
   const [linkId, setLinkId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [shareable, setShareable] = useState(false);
+  const [sharedSummary, setSharedSummary] = useState("");
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -42,11 +44,15 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
         priority: fd.get("priority"),
         linkedRockId: linkKind === "rock" ? linkId : undefined,
         linkedMetricId: linkKind === "metric" ? linkId : undefined,
+        shareable,
+        sharedSummary: shareable ? sharedSummary : undefined,
       }),
     });
     if (res.ok) {
       setOpen(false);
       setLinkId("");
+      setShareable(false);
+      setSharedSummary("");
       router.refresh();
     } else {
       const body = await res.json().catch(() => ({}));
@@ -107,6 +113,29 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
               <option value="medio">Medio</option>
               <option value="bajo">Bajo</option>
             </select>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2 text-sm font-medium text-gray-700">
+              <input type="checkbox" checked={shareable} onChange={(e) => setShareable(e.target.checked)} className="mt-0.5" />
+              Compartir resumen con la empresa
+            </label>
+            {shareable && (
+              <div className="mt-2">
+                <textarea
+                  value={sharedSummary}
+                  onChange={(e) => setSharedSummary(e.target.value)}
+                  rows={2}
+                  maxLength={400}
+                  required
+                  placeholder="Lo que verá la empresa. El detalle del IDS sigue privado"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600"
+                />
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Lo que verá la empresa. El detalle del IDS sigue privado. Sin salud, compensación, evaluaciones ni temas personales ({sharedSummary.length}/400).
+                </p>
+              </div>
+            )}
           </div>
 
           {error && <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}

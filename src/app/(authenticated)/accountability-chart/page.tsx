@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { EditRoleForm } from "./edit-role-form";
+import Link from "next/link";
+import { isSelectionEnabled } from "@/lib/report/config";
+import { getQuarterSelection } from "@/lib/selection/quarterSelection";
 import { Shield, CheckCircle, AlertTriangle, BarChart3 } from "lucide-react";
 
 export default async function AccountabilityChartPage() {
@@ -11,6 +14,28 @@ export default async function AccountabilityChartPage() {
     include: { user: true },
     orderBy: { sortOrder: "asc" },
   });
+
+  // Con la selección activa: métricas oficiales del área que lidera cada
+  // persona (ReportArea.leaderId/alternateId), no deducidas del texto del rol.
+  // keyMetrics sigue siendo texto libre y no se interpreta.
+  const selectionOn = isSelectionEnabled();
+  const activeQuarter = selectionOn ? await prisma.quarter.findFirst({ where: { isActive: true } }) : null;
+  const areaMetricsByUser = new Map<string, Array<{ id: string; label: string; areaName: string }>>();
+  if (selectionOn && activeQuarter) {
+    const [areas, selection] = await Promise.all([
+      prisma.reportArea.findMany({ where: { active: true }, select: { id: true, name: true, leaderId: true, alternateId: true } }),
+      getQuarterSelection(activeQuarter.id),
+    ]);
+    for (const area of areas) {
+      const rows = selection.rows.filter((r) => r.areaId === area.id);
+      for (const userId of new Set([area.leaderId, area.alternateId].filter((v): v is string => !!v))) {
+        const list = areaMetricsByUser.get(userId) ?? [];
+        for (const r of rows) list.push({ id: r.selectionId, label: r.label, areaName: area.name });
+        areaMetricsByUser.set(userId, list);
+      }
+    }
+  }
+  const quarterLabel = activeQuarter ? `Q${activeQuarter.quarter} ${activeQuarter.year}` : "";
 
   return (
     <div className="space-y-8">
@@ -116,6 +141,27 @@ export default async function AccountabilityChartPage() {
                       </li>
                     ))}
                   </ul>
+                  {selectionOn && (
+                    <div className="mt-4 border-t border-gray-100 pt-3">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                        Métricas del área en {quarterLabel}
+                      </h4>
+                      {(areaMetricsByUser.get(role.userId) ?? []).length === 0 ? (
+                        <p className="mt-1 text-xs text-gray-400">Sin métricas seleccionadas para un área a su cargo.</p>
+                      ) : (
+                        <ul className="mt-1 space-y-1">
+                          {areaMetricsByUser.get(role.userId)!.map((m) => (
+                            <li key={m.id} className="text-xs">
+                              <Link href="/scorecard" className="text-mawi-700 hover:underline">
+                                {m.label}
+                              </Link>
+                              <span className="text-gray-400"> · {m.areaName}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

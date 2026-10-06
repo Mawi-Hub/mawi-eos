@@ -1,178 +1,194 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { CATEGORIES, STATUS_CONFIG } from "@/lib/utils";
+import { isSelectionEnabled, companyMetricNames } from "@/lib/report/config";
+import { getQuarterSelection } from "@/lib/selection/quarterSelection";
+import type { SelectionMetricView } from "@/lib/selection/types";
+import { formatMetricValue } from "@/lib/metrics/format";
+import { isActionableState, resolveDataState } from "@/lib/metrics/dataState";
+import { quarterLabel, resolveQuarter, sortQuarters } from "@/lib/plan/quarterPick";
+import { DataStateBadge, SelectionMetricValue, SignalBadge } from "@/components/plan/SelectionMetric";
 import { ScorecardEntryForm } from "./entry-form";
 import { ScorecardSyncButton } from "./sync-button";
+import { ScorecardCatalogTable, SOURCE_META, normalizeSource } from "./catalog-table";
 
-type SourceKey = "chartmogul" | "hubspot" | "posthog" | "chat" | "manual";
-
-const SOURCE_META: Record<SourceKey, { label: string; className: string }> = {
-  chartmogul: { label: "ChartMogul", className: "bg-emerald-100 text-emerald-800" },
-  hubspot: { label: "HubSpot", className: "bg-orange-100 text-orange-800" },
-  posthog: { label: "PostHog", className: "bg-purple-100 text-purple-800" },
-  chat: { label: "Chat", className: "bg-sky-100 text-sky-800" },
-  manual: { label: "Manual", className: "bg-gray-100 text-gray-700" },
-};
-
-function normalizeSource(value: string | null): SourceKey {
-  const lower = (value ?? "manual").toLowerCase();
-  if (lower === "chartmogul" || lower === "hubspot" || lower === "posthog" || lower === "chat") {
-    return lower;
-  }
-  return "manual";
-}
-
-function formatActual(value: number | null | undefined, unit: string | null): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  const u = (unit ?? "").trim();
-  if (u === "$") {
-    return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-  }
-  if (u === "%") {
-    return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
-  }
-  if (u === "ratio") {
-    return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  }
-  if (u === "days") {
-    return `${value.toLocaleString("en-US", { maximumFractionDigits: 0 })} d`;
-  }
-  if (u === "hours") {
-    return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} h`;
-  }
-  if (u === "months") {
-    return `${value.toLocaleString("en-US", { maximumFractionDigits: 0 })} m`;
-  }
-  if (u === "boolean") {
-    return value === 1 ? "Sí" : "No";
-  }
-  return value.toLocaleString("en-US", { maximumFractionDigits: 1 });
-}
-
-export default async function ScorecardPage() {
+export default async function ScorecardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await auth();
-  const metrics = await prisma.scorecardMetric.findMany({
-    where: { isActive: true },
-    include: {
-      owner: true,
-      entries: {
-        orderBy: { periodStart: "desc" },
-        take: 1,
-      },
-    },
-    orderBy: { sortOrder: "asc" },
-  });
-
-  const activeQuarter = await prisma.quarter.findFirst({
-    where: { isActive: true },
-  });
+  const sp = await searchParams;
 
   const activePlan = await prisma.plan.findFirst({
     where: { status: "ACTIVE" },
     orderBy: { startDate: "desc" },
     select: { id: true },
   });
+  const activeQuarter = await prisma.quarter.findFirst({ where: { isActive: true } });
+  const isCeo = session?.user?.role === "ceo";
 
-  const grouped = Object.entries(CATEGORIES).map(([key, config]) => ({
-    key,
-    ...config,
-    metrics: metrics.filter((m) => m.category === key),
-  }));
+  if (!isSelectionEnabled()) {
+    // Modo legado: todas las métricas activas, como siempre.
+    const metrics = await prisma.scorecardMetric.findMany({
+      where: { isActive: true },
+      include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 1 } },
+      orderBy: { sortOrder: "asc" },
+    });
+    return (
+      <div className="space-y-8">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Scorecard</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              {activeQuarter ? `Q${activeQuarter.quarter} ${activeQuarter.year}` : "Sin trimestre activo"}
+            </p>
+          </div>
+          {isCeo && <ScorecardSyncButton planId={activePlan?.id ?? null} />}
+        </div>
+        <ScorecardCatalogTable metrics={metrics} userId={session?.user?.id} activeQuarterId={activeQuarter?.id ?? null} />
+      </div>
+    );
+  }
+
+  // Modo selección: una sola tabla, agrupada por área, con lo que eligió el trimestre.
+  const planQuarters = activePlan
+    ? await prisma.quarter.findMany({
+        where: { planId: activePlan.id },
+        select: { id: true, year: true, quarter: true, isActive: true, startDate: true },
+      })
+    : [];
+  const candidates = [...planQuarters];
+  if (activeQuarter && !candidates.some((q) => q.id === activeQuarter.id)) {
+    candidates.push({
+      id: activeQuarter.id,
+      year: activeQuarter.year,
+      quarter: activeQuarter.quarter,
+      isActive: activeQuarter.isActive,
+      startDate: activeQuarter.startDate,
+    });
+  }
+  const quarter = resolveQuarter(candidates, sp.q);
+  const viewingActive = !!quarter && quarter.id === activeQuarter?.id;
+
+  const selection = quarter ? await getQuarterSelection(quarter.id) : null;
+
+  const groups: { areaId: string; areaName: string; rows: SelectionMetricView[] }[] = [];
+  for (const row of selection?.rows ?? []) {
+    let g = groups.find((x) => x.areaId === row.areaId);
+    if (!g) {
+      g = { areaId: row.areaId, areaName: row.areaName, rows: [] };
+      groups.push(g);
+    }
+    g.rows.push(row);
+  }
+
+  // Contexto de empresa: bloque aparte, solo con los nombres autorizados.
+  const companyNames = companyMetricNames();
+  const companyMetrics = companyNames.length
+    ? await prisma.scorecardMetric.findMany({
+        where: { name: { in: companyNames } },
+        include: { entries: { orderBy: { periodStart: "desc" }, take: 1 } },
+      })
+    : [];
+  const now = new Date();
 
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Scorecard</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {activeQuarter
-              ? `Q${activeQuarter.quarter} ${activeQuarter.year}`
-              : "Sin trimestre activo"}
-          </p>
+          <p className="mt-1 text-sm text-gray-500">{quarter ? quarterLabel(quarter) : "Sin trimestre activo"}</p>
         </div>
-        {session?.user?.role === "ceo" && (
-          <ScorecardSyncButton planId={activePlan?.id ?? null} />
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {isCeo && (
+            <Link href="/scorecard/catalog" className="text-xs font-medium text-mawi-700 hover:underline">
+              Catálogo administrativo de métricas
+            </Link>
+          )}
+          {isCeo && <ScorecardSyncButton planId={activePlan?.id ?? null} />}
+        </div>
       </div>
 
-      {grouped.map((group) => (
-        <div key={group.key}>
-          <div className="mb-4 flex items-center gap-2">
-            <div className={`h-3 w-3 rounded-full ${group.color}`} />
-            <h2 className="text-lg font-semibold text-gray-900">{group.label}</h2>
-          </div>
+      {candidates.length > 1 && (
+        <nav className="flex flex-wrap gap-2 text-sm" aria-label="Trimestre">
+          {sortQuarters(candidates).map((q) => (
+            <Link
+              key={q.id}
+              href={`/scorecard?q=${q.id}`}
+              className={`rounded-md px-3 py-1.5 ${
+                q.id === quarter?.id ? "bg-mawi-100 font-medium text-mawi-800" : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              {quarterLabel(q)}
+              {q.isActive ? " (activo)" : ""}
+            </Link>
+          ))}
+        </nav>
+      )}
 
-          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+      {quarter && selection && !selection.hasSelection && (
+        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">
+          Legado sin selección registrada para Q{quarter.quarter}.
+        </div>
+      )}
+
+      {groups.map((group) => (
+        <div key={group.areaId}>
+          <h2 className="mb-3 text-lg font-semibold text-gray-900">{group.areaName}</h2>
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Métrica</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Owner</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Valor Actual</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Target</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Estado</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Frecuencia</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Origen</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Actualizado</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Acciones</th>
+                  {["Métrica", "Owner", "Valor", "Meta", "Semáforo", "Período", "Origen", "Acciones"].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {group.metrics.map((metric) => {
-                  const lastEntry = metric.entries[0];
-                  const status = lastEntry?.status || "pending";
-                  const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-                  const isOwner = session?.user?.id === metric.ownerId;
-                  const source = normalizeSource(metric.dataSource);
-                  const sourceMeta = SOURCE_META[source];
-                  const isManual = source === "manual";
-
+                {group.rows.map((row) => {
+                  const source = row.metric ? SOURCE_META[normalizeSource(row.metric.dataSource)] : null;
+                  const isManual = row.metric ? normalizeSource(row.metric.dataSource) === "manual" : false;
+                  const isOwner = !!row.metric && session?.user?.id === row.metric.ownerId;
                   return (
-                    <tr key={metric.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900">{metric.name}</div>
-                        <div className="text-xs text-gray-500">{metric.calculation}</div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{metric.owner.name}</td>
+                    <tr key={row.selectionId} className={row.pendingConfig ? "bg-gray-50 text-gray-400" : "hover:bg-gray-50"}>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {lastEntry?.actualDisplay ||
-                          formatActual(lastEntry?.actualValue, metric.unit)}
+                        <span className={row.pendingConfig ? "text-gray-500" : undefined}>{row.label}</span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{metric.targetValue || "—"}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{row.reportOwnerName ?? "—"}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusConfig.className}`}>
-                          {statusConfig.label}
-                        </span>
+                        <SelectionMetricValue view={row} />
                       </td>
-                      <td className="px-4 py-3 text-xs capitalize text-gray-500">{metric.frequency}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{row.pendingConfig ? "—" : row.targetText ?? "Meta por confirmar"}</td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${sourceMeta.className}`}
-                        >
-                          {sourceMeta.label}
-                        </span>
+                        <SignalBadge signal={row.signal} />
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        {lastEntry?.updatedAt
-                          ? new Date(lastEntry.updatedAt).toLocaleDateString("es", { day: "numeric", month: "short" })
-                          : "—"}
-                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{row.pendingConfig ? "—" : row.periodLabel}</td>
                       <td className="px-4 py-3">
-                        {isManual ? (
-                          isOwner && activeQuarter && (
-                            <ScorecardEntryForm
-                              metricId={metric.id}
-                              metricName={metric.name}
-                              quarterId={activeQuarter.id}
-                              unit={metric.unit}
-                              prompt={metric.calculation}
-                              targetNumeric={metric.targetNumeric}
-                              targetDirection={metric.targetDirection}
-                            />
-                          )
+                        {source ? (
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${source.className}`}>
+                            {source.label}
+                          </span>
                         ) : (
-                          <span className="text-[11px] text-gray-400">Auto</span>
+                          <span className="text-xs text-gray-400">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isManual && isOwner && viewingActive && quarter && row.metric && !row.pendingConfig ? (
+                          <ScorecardEntryForm
+                            metricId={row.metric.id}
+                            metricName={row.label}
+                            quarterId={quarter.id}
+                            unit={row.metric.unit}
+                            prompt={row.definition?.description ?? null}
+                            targetNumeric={row.metric.targetNumeric}
+                            targetDirection={row.metric.targetDirection}
+                          />
+                        ) : row.metric && !isManual ? (
+                          <span className="text-[11px] text-gray-400">Auto</span>
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -182,6 +198,36 @@ export default async function ScorecardPage() {
           </div>
         </div>
       ))}
+
+      {companyMetrics.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">Contexto de empresa</h2>
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <table className="min-w-full divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
+                {companyMetrics.map((m) => {
+                  const entry = m.entries[0] ?? null;
+                  const state = resolveDataState(entry, { frequency: m.frequency, now, autoSynced: m.dataSource !== "manual" });
+                  return (
+                    <tr key={m.id}>
+                      <td className="px-4 py-2 text-sm text-gray-900">{m.name}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {isActionableState(state) && entry ? (
+                          <span className="font-semibold text-gray-900">
+                            {entry.actualDisplay ?? formatMetricValue(entry.actualValue, m.unit) ?? "—"}
+                          </span>
+                        ) : (
+                          <DataStateBadge state={state} />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

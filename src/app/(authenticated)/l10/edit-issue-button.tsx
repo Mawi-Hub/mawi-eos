@@ -8,18 +8,26 @@ export default function EditIssueButton({
   currentTitle,
   currentDescription,
   currentPriority,
+  currentShareable = false,
+  currentSharedSummary = "",
 }: {
   issueId: string;
   currentTitle: string;
   currentDescription: string;
   currentPriority: string;
+  currentShareable?: boolean;
+  currentSharedSummary?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [shareable, setShareable] = useState(currentShareable);
+  const [sharedSummary, setSharedSummary] = useState(currentSharedSummary);
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError(null);
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     const res = await fetch("/api/l10/issues", {
@@ -30,9 +38,17 @@ export default function EditIssueButton({
         title: fd.get("title"),
         description: fd.get("description"),
         priority: fd.get("priority"),
+        shareable,
+        sharedSummary: shareable ? sharedSummary : null,
       }),
     });
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) {
+      setOpen(false);
+      router.refresh();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || "No se pudo guardar el issue");
+    }
     setLoading(false);
   }
 
@@ -77,6 +93,31 @@ export default function EditIssueButton({
               <option value="bajo">Bajo</option>
             </select>
           </div>
+
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2 text-sm font-medium text-gray-700">
+              <input type="checkbox" checked={shareable} onChange={(e) => setShareable(e.target.checked)} className="mt-0.5" />
+              Compartir resumen con la empresa
+            </label>
+            {shareable && (
+              <div className="mt-2">
+                <textarea
+                  value={sharedSummary}
+                  onChange={(e) => setSharedSummary(e.target.value)}
+                  rows={2}
+                  maxLength={400}
+                  required
+                  placeholder="Lo que verá la empresa. El detalle del IDS sigue privado"
+                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600"
+                />
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Lo que verá la empresa. El detalle del IDS sigue privado. Sin salud, compensación, evaluaciones ni temas personales ({sharedSummary.length}/400).
+                </p>
+              </div>
+            )}
+          </div>
+
+          {error && <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={loading} className="flex-1 rounded-lg bg-mawi-800 px-4 py-2 text-sm font-medium text-white hover:bg-mawi-700 disabled:opacity-50">
               {loading ? "..." : "Guardar"}

@@ -2,18 +2,22 @@ import { after, NextResponse } from "next/server";
 import {
   verifySlackSignature,
   processCheckinEvent,
-  type SlackMessageEvent,
+  processCheckinEdit,
+  processCheckinDelete,
 } from "@/lib/integrations/checkin";
 import { processKpiDmEvent } from "@/lib/integrations/kpiCheckin";
+import { prismaSlackEventStore, receiveSlackEvent } from "@/lib/integrations/slackEvents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Slack Events API endpoint. Verifies the request signature, answers the
-// url_verification challenge, then acks within Slack's 3s window and processes
-// the check-in in the background via `after` (Vercel keeps the function alive
-// with waitUntil under the hood).
+// url_verification challenge, PERSISTS the event (SlackEvent, unique by
+// event_id) and only then acks within Slack's 3s window. Processing runs in
+// the background via `after`. Duplicates/retries are deduplicated by event id,
+// not by the x-slack-retry-num header, so an event whose processing failed can
+// still be reprocessed by a later retry.
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const timestamp = request.headers.get("x-slack-request-timestamp");
@@ -24,53 +28,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = JSON.parse(rawBody);
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  }
 
   // Slack endpoint verification handshake.
   if (body.type === "url_verification") {
     return NextResponse.json({ challenge: body.challenge });
   }
 
-  // Ignore Slack delivery retries so we don't create duplicate Notion rows.
-  if (request.headers.get("x-slack-retry-num")) {
-    return NextResponse.json({ ok: true });
-  }
-
   if (body.type !== "event_callback") {
     return NextResponse.json({ ok: true });
   }
 
-  const event = body.event as SlackMessageEvent;
-
-  // Only real human messages — skip edits, joins, and the bot's own replies.
-  if (event?.type !== "message" || event.subtype || event.bot_id) {
-    return NextResponse.json({ ok: true });
-  }
-
-  // DMs al bot → conversación de KPI check-in (wins → métricas → challenges).
-  if (event.channel_type === "im") {
-    after(async () => {
-      try {
-        await processKpiDmEvent(event);
-      } catch (error) {
-        console.error("[kpi-checkin] Error procesando DM:", error);
-      }
-    });
-    return NextResponse.json({ ok: true });
-  }
-
-  // Mensajes de canal: solo #team-checkins.
-  if (event.channel !== process.env.CHECKIN_CHANNEL_ID) {
-    return NextResponse.json({ ok: true });
-  }
-
-  after(async () => {
-    try {
-      await processCheckinEvent(event);
-    } catch (error) {
-      console.error("[checkin] Error procesando check-in:", error);
-    }
+  const result = await receiveSlackEvent(body as Parameters<typeof receiveSlackEvent>[0], {
+    store: prismaSlackEventStore,
+    checkinChannel: process.env.CHECKIN_CHANNEL_ID,
+    schedule: (task) => after(task),
+    processors: {
+      // DMs al bot → conversación de check-in del líder.
+      dm: (event) => processKpiDmEvent(event),
+      checkin_message: (event) => processCheckinEvent(event),
+      checkin_edit: (event) => processCheckinEdit(event),
+      checkin_delete: (event) => processCheckinDelete(event),
+    },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: result.status === 200 }, { status: result.status });
 }

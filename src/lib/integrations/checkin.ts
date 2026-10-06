@@ -14,6 +14,10 @@
 //   CHECKIN_CHANNEL_ID    — Slack channel ID for #team-checkins (starts with C)
 
 import crypto from "crypto";
+import { checkinPeriodStart } from "@/lib/time/costaRica";
+import {
+  prismaCheckinStore, StepError, type CheckinStore, type EvidenceRecord, type EvidenceRevision,
+} from "./checkinStore";
 import {
   CHECKIN_TIME_ZONE, checkinDate, digestPeriod, digestHeader, fallbackDigestBody,
   groupCheckins, isEnergy, type CheckinRow, type DigestPeriod,
@@ -39,6 +43,11 @@ export type SlackMessageEvent = {
   channel_type?: string; // "channel" | "im" | ...
   subtype?: string;
   bot_id?: string;
+  thread_ts?: string;
+  // message_changed: el mensaje nuevo viene anidado.
+  message?: { user?: string; text?: string; ts?: string; bot_id?: string; subtype?: string; thread_ts?: string };
+  // message_deleted
+  deleted_ts?: string;
 };
 
 // Verify Slack's request signature (HMAC-SHA256 over `v0:timestamp:body`).
@@ -160,13 +169,20 @@ export async function getSlackUserName(userId: string): Promise<string> {
   return data.user?.real_name || data.user?.name || userId;
 }
 
+const NOTION_HEADERS = () => ({
+  Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
+  "Content-Type": "application/json",
+  "Notion-Version": "2022-06-28",
+});
+
 // Create a row in the Notion check-ins database. Property names must match the
-// Notion DB schema exactly (see the integration guide).
+// Notion DB schema exactly (see the integration guide). Returns the page id so
+// EOS can update the same page later instead of creating a duplicate.
 export async function createNotionEntry(
   fields: CheckinFields,
   userName: string,
   messageTs: string,
-): Promise<void> {
+): Promise<string> {
   const date = checkinDate(new Date(parseFloat(messageTs) * 1000));
   const title = `${fields.tipo} — ${userName} — ${date}`;
 
@@ -184,11 +200,7 @@ export async function createNotionEntry(
 
   const res = await fetch("https://api.notion.com/v1/pages", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
-      "Content-Type": "application/json",
-      "Notion-Version": "2022-06-28",
-    },
+    headers: NOTION_HEADERS(),
     body: JSON.stringify({
       parent: { database_id: process.env.NOTION_DATABASE_ID },
       properties,
@@ -198,6 +210,35 @@ export async function createNotionEntry(
   if (!res.ok) {
     throw new Error(`Notion API error: ${JSON.stringify(await res.json())}`);
   }
+  const page = (await res.json()) as { id?: string };
+  if (!page.id) throw new Error("Notion API error: la respuesta no trae el id de la página");
+  return page.id;
+}
+
+// Una edición del mensaje actualiza Win/Reto de la MISMA página. Energía y
+// "Por qué" se dejan como estaban.
+export async function updateNotionEntry(
+  pageId: string,
+  fields: { win: string | null; reto: string | null },
+): Promise<void> {
+  const text = (value: string | null) => ({ rich_text: value ? [{ text: { content: value } }] : [] });
+  const res = await fetch(`https://api.notion.com/v1/pages/${encodeURIComponent(pageId)}`, {
+    method: "PATCH",
+    headers: NOTION_HEADERS(),
+    body: JSON.stringify({ properties: { Win: text(fields.win), Reto: text(fields.reto) } }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Notion API error: ${res.status}`);
+}
+
+// Enlace permanente al mensaje (best effort: quien lo llama no debe fallar si no existe).
+export async function getSlackPermalink(channel: string, messageTs: string): Promise<string | null> {
+  const res = await fetch(
+    `https://slack.com/api/chat.getPermalink?channel=${encodeURIComponent(channel)}&message_ts=${encodeURIComponent(messageTs)}`,
+    { headers: { Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}` }, signal: AbortSignal.timeout(5_000) },
+  );
+  const data = (await res.json()) as { ok?: boolean; permalink?: string };
+  return data.ok && typeof data.permalink === "string" ? data.permalink : null;
 }
 
 // Post a message to a Slack channel as the bot.
@@ -215,22 +256,176 @@ export async function postSlackMessage(channel: string, text: string): Promise<v
   if (!res.ok || !data.ok) throw new Error(`Slack chat.postMessage failed: ${data.error ?? res.status}`);
 }
 
+// Todo lo que toca la red o la base de datos entra por acá, para que las
+// pruebas inyecten simulaciones. Por defecto: la implementación real.
+export type CheckinDeps = {
+  now: () => Date;
+  store: CheckinStore;
+  getUserName: (userId: string) => Promise<string>;
+  extract: (text: string, userName: string, sentAt: Date) => Promise<CheckinFields | null>;
+  getPermalink: (channel: string, ts: string) => Promise<string | null>;
+  createNotionPage: (fields: CheckinFields, userName: string, messageTs: string) => Promise<string>;
+  updateNotionPage: (pageId: string, fields: { win: string | null; reto: string | null }) => Promise<void>;
+};
+
+export const defaultCheckinDeps: CheckinDeps = {
+  now: () => new Date(),
+  store: prismaCheckinStore,
+  getUserName: getSlackUserName,
+  extract: extractCheckinFields,
+  getPermalink: getSlackPermalink,
+  createNotionPage: createNotionEntry,
+  updateNotionPage: updateNotionEntry,
+};
+
+const tsToDate = (ts: string) => new Date(parseFloat(ts) * 1000);
+
+async function step<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    throw new StepError(name, error);
+  }
+}
+
 // End-to-end handling of one Slack message event. Called in the background
 // (via `after`) so it never blocks Slack's 3-second ack window.
-export async function processCheckinEvent(event: SlackMessageEvent): Promise<void> {
-  const userName = await getSlackUserName(event.user);
-  const fields = await extractCheckinFields(event.text, userName, new Date(parseFloat(event.ts) * 1000));
+//
+// Orden: 1) evidencia en EOS (idempotente por canal+ts), 2) Notion solo si la
+// evidencia aún no tiene página. Si Notion falla la evidencia queda guardada y
+// un reintento completa la MISMA fila/página.
+export async function processCheckinEvent(
+  event: SlackMessageEvent,
+  overrides: Partial<CheckinDeps> = {},
+): Promise<void> {
+  const deps = { ...defaultCheckinDeps, ...overrides };
+  const messageAt = tsToDate(event.ts);
 
-  if (!fields || !fields.es_checkin) {
-    console.log(`[checkin] Mensaje de ${userName} ignorado — no parece check-in`);
+  let evidence = await step("evidence_lookup", () => deps.store.findEvidence(event.channel, event.ts));
+  const existed = evidence !== null;
+  // Ya guardado en EOS y en Notion: un duplicado no tiene nada más que hacer.
+  if (evidence?.notionPageId) return;
+
+  const userName = evidence?.authorName ?? (await step("slack_user", () => deps.getUserName(event.user)));
+  // La energía y el motivo personal solo viajan a Notion: se re-extraen en cada intento.
+  const fields = await step("claude", () => deps.extract(event.text, userName, messageAt));
+
+  // Sin respuesta utilizable de Claude no sabemos si es un check-in: se falla
+  // (reintentable) en vez de ignorar en silencio.
+  if (!fields) throw new StepError("claude", new Error("sin extracción"));
+  if (!fields.es_checkin) {
+    console.log("[checkin] Mensaje ignorado — no parece check-in");
     return;
   }
 
-  await createNotionEntry(fields, userName, event.ts);
+  if (!evidence) {
+    // Las respuestas en hilo pertenecen al período de la pregunta original.
+    const periodAnchor = event.thread_ts ? tsToDate(event.thread_ts) : messageAt;
+    const member = await step("member_lookup", () => deps.store.resolveMember(event.user, messageAt));
+    let permalink: string | null = null;
+    try {
+      permalink = await deps.getPermalink(event.channel, event.ts);
+    } catch {
+      permalink = null; // best effort
+    }
+    const created = await step("evidence_write", () =>
+      deps.store.createEvidence({
+        channelId: event.channel,
+        messageTs: event.ts,
+        slackUserId: event.user,
+        // Solo identidad verificada por Slack ID; nunca por nombre.
+        userId: member?.userId ?? null,
+        areaKey: member?.areaKey ?? null,
+        authorName: userName,
+        periodStart: checkinPeriodStart(periodAnchor),
+        reportedAt: messageAt,
+        originalText: event.text,
+        win: fields.win,
+        challenge: fields.reto,
+        permalink,
+      }),
+    );
+    evidence = created.record;
+  } else if (!evidence.userId || !evidence.areaKey) {
+    // Reintento: la identidad pudo verificarse después.
+    const member = await step("member_lookup", () => deps.store.resolveMember(event.user, evidence!.reportedAt));
+    if (member && ((member.userId && !evidence.userId) || (member.areaKey && !evidence.areaKey))) {
+      evidence = await step("evidence_write", () =>
+        deps.store.updateEvidence(evidence!.id, {
+          userId: evidence!.userId ?? member.userId,
+          areaKey: evidence!.areaKey ?? member.areaKey,
+        }),
+      );
+    }
+  }
+
+  if (!evidence.notionPageId) {
+    const pageId = await step("notion", () => deps.createNotionPage(fields, userName, event.ts));
+    await step("evidence_write", () => deps.store.updateEvidence(evidence!.id, { notionPageId: pageId }));
+  }
   // No Slack confirmation per check-in — the user's own reply is enough, and a
   // bot reply on every response makes too much noise in the channel.
-  console.log(`[checkin] ✅ Check-in de ${userName} (${fields.tipo}) guardado en Notion`);
+  console.log(`[checkin] Check-in guardado (${existed ? "reintento" : "nuevo"})`);
 }
+
+// message_changed: agrega una revisión, conserva el original intacto y
+// actualiza Win/Reto en la misma página de Notion (best effort).
+export async function processCheckinEdit(
+  event: SlackMessageEvent,
+  overrides: Partial<CheckinDeps> = {},
+): Promise<void> {
+  const deps = { ...defaultCheckinDeps, ...overrides };
+  const edited = event.message;
+  if (!edited?.ts || typeof edited.text !== "string" || edited.bot_id) return;
+
+  const evidence = await step("evidence_lookup", () => deps.store.findEvidence(event.channel, edited.ts!));
+  if (!evidence) return; // nunca fue un check-in registrado
+
+  const currentText = evidence.revisions.length
+    ? evidence.revisions[evidence.revisions.length - 1].text
+    : evidence.originalText;
+  // Slack también envía message_changed por previsualizaciones de enlaces.
+  if (currentText === edited.text) return;
+
+  const fields = await step("claude", () => deps.extract(edited.text!, evidence.authorName, deps.now()));
+  if (!fields) throw new StepError("claude", new Error("sin extracción"));
+
+  const revision: EvidenceRevision = {
+    at: deps.now().toISOString(),
+    text: edited.text,
+    win: fields.win,
+    challenge: fields.reto,
+  };
+  await step("evidence_write", () =>
+    deps.store.updateEvidence(evidence.id, {
+      revisions: [...evidence.revisions, revision],
+      win: fields.win,
+      challenge: fields.reto,
+    }),
+  );
+
+  if (evidence.notionPageId) {
+    try {
+      await deps.updateNotionPage(evidence.notionPageId, { win: fields.win, reto: fields.reto });
+    } catch {
+      console.error("[checkin] No se pudo actualizar la página de Notion tras la edición");
+    }
+  }
+}
+
+// message_deleted: solo marca deletedAt; la fila y su historial se conservan.
+export async function processCheckinDelete(
+  event: SlackMessageEvent,
+  overrides: Partial<CheckinDeps> = {},
+): Promise<void> {
+  const deps = { ...defaultCheckinDeps, ...overrides };
+  if (!event.deleted_ts) return;
+  const evidence = await step("evidence_lookup", () => deps.store.findEvidence(event.channel, event.deleted_ts!));
+  if (!evidence || evidence.deletedAt) return;
+  await step("evidence_write", () => deps.store.updateEvidence(evidence.id, { deletedAt: deps.now() }));
+}
+
+export type { EvidenceRecord };
 
 // ---------------------------------------------------------------------------
 // Weekly digest — read the week's check-ins from Notion, summarize with Claude,

@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 type EntryPayload = {
-  actualValue: number;
+  actualValue: number | null;
+  dataState?: string;
+  provenance?: string;
   actualDisplay: string | null;
   notes: string | null;
   statusOverride?: string;
@@ -30,12 +32,15 @@ export function ScorecardEntryForm({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notes, setNotes] = useState("");
+  const [state, setState] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const isBoolean = unit === "boolean";
 
   async function post(payload: EntryPayload) {
     setLoading(true);
+    setError(null);
     const res = await fetch("/api/scorecard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -44,7 +49,11 @@ export function ScorecardEntryForm({
     if (res.ok) {
       setOpen(false);
       setNotes("");
+      setState("");
       router.refresh();
+    } else {
+      const j = await res.json().catch(() => null);
+      setError(j?.error ?? "No se pudo guardar");
     }
     setLoading(false);
   }
@@ -63,8 +72,12 @@ export function ScorecardEntryForm({
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const rawValue = (formData.get("actualValue") as string) ?? "";
+    const dataState = (formData.get("dataState") as string) || undefined;
     void post({
-      actualValue: parseFloat(formData.get("actualValue") as string),
+      actualValue: rawValue === "" ? null : parseFloat(rawValue),
+      dataState,
+      provenance: ((formData.get("provenance") as string) || "").trim() || undefined,
       actualDisplay: (formData.get("actualDisplay") as string) || null,
       notes: (formData.get("notes") as string) || null,
       statusOverride: (formData.get("statusOverride") as string) || undefined,
@@ -152,7 +165,39 @@ export function ScorecardEntryForm({
               name="actualValue"
               type="number"
               step="any"
-              required
+              required={state === "" || state === "confirmed_zero"}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Estado del dato (opcional)
+            </label>
+            <select
+              name="dataState"
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600"
+            >
+              <option value="">Con valor</option>
+              <option value="confirmed_zero">Cero confirmado</option>
+              <option value="pending">Pendiente</option>
+              <option value="no_sample">Sin muestra</option>
+              <option value="not_applicable">No aplica</option>
+              <option value="error">Error de la fuente</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Fuente / evidencia (opcional)
+            </label>
+            <input
+              name="provenance"
+              type="text"
+              maxLength={500}
+              placeholder="Ej: reporte nativo de HubSpot, 30 sep"
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600"
             />
           </div>
@@ -191,6 +236,8 @@ export function ScorecardEntryForm({
               className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600"
             />
           </div>
+
+          {error && <div className="text-xs text-red-600">{error}</div>}
 
           <div className="flex gap-3">
             <button

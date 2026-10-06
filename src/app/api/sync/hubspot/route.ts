@@ -5,9 +5,12 @@ import {
   searchDeals,
   searchContacts,
   searchDemoMeetings,
+  searchDemoMeetingsInPeriod,
   calculatePipelineMetrics,
+  PIPELINE_FORMULA_VERSION,
 } from "@/lib/integrations/hubspot";
 import { calculateStatus } from "@/lib/utils";
+import { crMonthStart } from "@/lib/time/costaRica";
 
 // Must match the Scorecard metric name seeded in prisma/seeds/planH2.ts.
 const DEMOS_METRIC_NAME = "Demos agendadas / semana";
@@ -28,28 +31,82 @@ export async function POST() {
   }
 
   try {
+    // Mes a la fecha en hora Costa Rica. Los cierres se cuentan por fecha de
+    // cierre (no de creación) y las citas por fecha de la cita; todo paginado.
+    const now = new Date();
+    const periodStart = crMonthStart(now);
+    const period = { start: periodStart.toISOString(), end: now.toISOString() };
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-    const [dealsResult, contactsResult] = await Promise.all([
+    const [wonDealsResult, contactsResult, demoMeetingsInPeriod] = await Promise.all([
       searchDeals([
-        { propertyName: "createdate", operator: "GTE", value: thirtyDaysAgo },
+        { propertyName: "dealstage", operator: "EQ", value: "closedwon" },
+        { propertyName: "closedate", operator: "GTE", value: period.start },
+        { propertyName: "closedate", operator: "LTE", value: period.end },
       ]),
       searchContacts([
         { propertyName: "createdate", operator: "GTE", value: thirtyDaysAgo },
         { propertyName: "lifecyclestage", operator: "EQ", value: "marketingqualifiedlead" },
       ]),
+      searchDemoMeetingsInPeriod(period.start, period.end),
     ]);
 
-    const deals = dealsResult.results?.map((d: { properties: Record<string, string> }) => d.properties) || [];
-    const leads = contactsResult.results?.map((c: { properties: Record<string, string> }) => c.properties) || [];
+    const wonDeals = wonDealsResult.results.map((d) => d.properties);
+    const leads = contactsResult.results.map((c) => c.properties);
 
-    const metrics = calculatePipelineMetrics(leads, deals, { completed: 0, total: 0 });
+    const metrics = calculatePipelineMetrics({
+      leads,
+      wonDealsInPeriod: wonDeals,
+      demoMeetings: demoMeetingsInPeriod,
+      period,
+    });
 
     await prisma.apiSyncCache.upsert({
       where: { source_dataKey: { source: "hubspot", dataKey: "pipeline_metrics" } },
       update: { data: metrics as object, syncedAt: new Date() },
       create: { source: "hubspot", dataKey: "pipeline_metrics", data: metrics as object, syncedAt: new Date() },
     });
+
+    // Show rate y % de cierre → ScorecardEntry mensual SOLO con la bandera
+    // HUBSPOT_WRITE_RATE_ENTRIES=1 (las definiciones siguen pendientes de
+    // validar con Ventas). Sin meta confirmada el estado queda "pending";
+    // denominador 0 se guarda como "sin muestra", nunca como 0%.
+    if (process.env.HUBSPOT_WRITE_RATE_ENTRIES === "1") {
+      const quarters = await prisma.quarter.findMany();
+      const quarter = quarters.find((q) => periodStart >= q.startDate && periodStart <= q.endDate);
+      const targets: Array<{ name: string; value: number | null; detail: { numerator: number; denominator: number } }> = [
+        { name: "Show Rate", value: metrics.showRate, detail: metrics.showRateDetail },
+        { name: "Close Rate", value: metrics.closeRate, detail: metrics.closeRateDetail },
+      ];
+      for (const t of targets) {
+        const metric = await prisma.scorecardMetric.findFirst({ where: { name: t.name, dataSource: "hubspot" } });
+        if (!metric || !quarter) continue;
+        const data = {
+          actualValue: t.value,
+          actualDisplay: null,
+          numerator: t.detail.numerator,
+          denominator: t.detail.denominator,
+          dataState: t.value === null ? "no_sample" : t.value === 0 ? "confirmed_zero" : null,
+          formulaVersion: PIPELINE_FORMULA_VERSION,
+          provenance: "HubSpot sync (definición pendiente de validar)",
+          expectedValue: null,
+          autoSynced: true,
+          status: "pending",
+          notes: `HubSpot sync ${now.toISOString().split("T")[0]}`,
+        };
+        await prisma.scorecardEntry.upsert({
+          where: { metricId_periodStart: { metricId: metric.id, periodStart } },
+          update: data,
+          create: {
+            ...data,
+            metricId: metric.id,
+            quarterId: quarter.id,
+            periodStart,
+            periodEnd: new Date(crMonthStart(new Date(periodStart.getTime() + 32 * 86_400_000)).getTime() - 1),
+          },
+        });
+      }
+    }
 
     // Demos agendadas / semana → ScorecardEntry, bucketed by booking week.
     // The current (partial) week is written too and refreshes on each sync.

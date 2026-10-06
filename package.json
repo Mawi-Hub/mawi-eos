@@ -13,7 +13,10 @@
     "db:reset": "npx prisma migrate reset --force",
     "test:checkin": "tsx --env-file=.env.local scripts/test-checkin.ts",
     "test:checkin:unit": "tsx --test src/lib/integrations/checkin.test.ts",
-    "preview:checkin": "tsx --env-file=.env.local scripts/preview-checkin.ts"
+    "preview:checkin": "tsx --env-file=.env.local scripts/preview-checkin.ts",
+    "test:unit": "tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
+    "report:preview": "tsx scripts/preview-report.ts",
+    "report:config": "tsx scripts/apply-report-config.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.6.0",

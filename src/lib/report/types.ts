@@ -86,6 +86,9 @@ export type MeetingReportSnapshot = {
   period: { start: string; end: string; cutAt: string };
   objective: string | null;
   closedByName: string;
+  // "legacy_no_selection": el trimestre nunca tuvo selección registrada; las
+  // áreas muestran sus bloques sin scorecard en vez de inventar una lista.
+  selectionStatus: "ok" | "legacy_no_selection";
   companyMetrics: MetricLine[];
   areas: AreaBlock[];
   wins: WinItem[];
