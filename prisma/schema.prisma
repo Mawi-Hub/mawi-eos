@@ -36,6 +36,11 @@ model User {
   issueVotes          L10IssueVote[]
   coveragesCreated    L10Coverage[]
   kpiCheckinSessions  KpiCheckinSession[]
+  areasLed            ReportArea[]    @relation("areaLeader")
+  areasAlternate      ReportArea[]    @relation("areaAlternate")
+  reportMemberships   ReportMember[]
+  meetingsClosed      L10Meeting[]    @relation("meetingsClosed")
+  leaderPreps         LeaderPrep[]
 
   @@map("users")
 }
@@ -70,6 +75,8 @@ model Quarter {
   endDate   DateTime @map("end_date")
   isActive  Boolean  @default(false) @map("is_active")
   planId    String?  @map("plan_id")
+  // Objetivo vigente del trimestre; se muestra en el resumen de management.
+  objective String?
   createdAt DateTime @default(now()) @map("created_at")
 
   plan             Plan?            @relation(fields: [planId], references: [id])
@@ -77,6 +84,8 @@ model Quarter {
   rocks            Rock[]
   winsAndChallenges WinChallenge[]
   l10Meetings      L10Meeting[]
+  areaConfigs      AreaQuarterConfig[]
+  metricSelections QuarterMetricSelection[]
 
   @@unique([year, quarter])
   @@map("quarters")
@@ -96,12 +105,20 @@ model ScorecardMetric {
   dataSource      String   @default("manual") @map("data_source") // manual, chartmogul, hubspot, posthog
   sortOrder       Int      @default(0) @map("sort_order")
   isActive        Boolean  @default(true) @map("is_active")
+  // Cómo se combinan varias entradas dentro de un mes al mostrar el valor
+  // efectivo: last (último no nulo), sum, avg, max. "last" conserva el
+  // comportamiento histórico.
+  aggregation     String   @default("last")
+  // Escala con la que se guardó un porcentaje: "0-100" (default) o "0-1".
+  percentScale    String   @default("0-100") @map("percent_scale")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   owner        User             @relation(fields: [ownerId], references: [id])
   entries      ScorecardEntry[]
   linkedIssues L10Issue[]       @relation("issuesLinkedMetric")
+  planKpis     PlanKPI[]
+  selections   QuarterMetricSelection[]
 
   @@map("scorecard_metrics")
 }
@@ -119,6 +136,14 @@ model ScorecardEntry {
   // Se guarda acá para que las vistas no tengan que reconstruir la rampa.
   expectedValue Float?   @map("expected_value")
   status        String   @default("pending") // on_track, off_track, riesgo, pending
+  // Estado del dato cuando no es un valor normal: confirmed_zero, pending,
+  // not_applicable, no_sample, stale, error. null = valor presente.
+  dataState     String?  @map("data_state")
+  numerator     Float?
+  denominator   Float?
+  formulaVersion String? @map("formula_version")
+  // Fuente o evidencia de donde salió el número (reporte nativo, enlace, etc.).
+  provenance    String?
   notes         String?
   enteredById   String?  @map("entered_by_id")
   autoSynced    Boolean  @default(false) @map("auto_synced")
@@ -166,6 +191,9 @@ model WinChallenge {
   keyChallenge   String?  @map("key_challenge") // Challenge description
   priority       String   @default("medio") // alto, medio, bajo (for challenges)
   followUpAction String?  @map("follow_up_action") // Next action (for challenges)
+  // Win destacado por el líder para el resumen de management.
+  highlighted    Boolean  @default(false)
+  shareable      Boolean  @default(false)
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -183,10 +211,23 @@ model L10Meeting {
   phase           String    @default("preread") // preread, voting, ids, commitments, closed
   prereadDeadline DateTime? @map("preread_deadline")
   notes           String?
+  // Se incrementa con cada cambio hecho desde la app; el comando de cierre
+  // lo exige para no cerrar sobre una versión que ya cambió.
+  version         Int       @default(0)
+  // human | system_cron | migration. Solo "human" puede publicar.
+  closeOrigin     String?   @map("close_origin")
+  closedAt        DateTime? @map("closed_at")
+  closedById      String?   @map("closed_by_id")
+  periodStart     DateTime? @map("period_start")
+  periodEnd       DateTime? @map("period_end")
+  cutAt           DateTime? @map("cut_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   quarter      Quarter          @relation(fields: [quarterId], references: [id])
+  closedBy     User?            @relation("meetingsClosed", fields: [closedById], references: [id])
+  reports      MeetingReport[]
+  leaderPreps  LeaderPrep[]
   issues       L10Issue[]
   commitments  L10Commitment[]
   preReadReads L10PreReadRead[]
@@ -210,6 +251,10 @@ model L10Issue {
   linkedRockId   String?   @map("linked_rock_id")
   linkedMetricId String?   @map("linked_metric_id")
   submittedAt    DateTime? @map("submitted_at")
+  // Solo lo compartible sale al resumen: el IDS conserva sus detalles privados
+  // y la empresa ve únicamente sharedSummary.
+  shareable      Boolean   @default(false)
+  sharedSummary  String?   @map("shared_summary")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -231,6 +276,16 @@ model L10Commitment {
   action    String
   dueDate   DateTime  @map("due_date")
   done      Boolean   @default(false)
+  // open | done | pending. "pending" = revisado y sigue abierto, con motivo.
+  status    String    @default("open")
+  // Fecha con la que nació el acuerdo; dueDate puede moverse, esta no.
+  originalDueDate DateTime? @map("original_due_date")
+  // [{ from, to, reason, byId, at }] — cada cambio de fecha con su motivo.
+  dateChanges Json    @default("[]") @map("date_changes")
+  nextStep  String?   @map("next_step")
+  // false = propuesto: no se comunica como aceptado hasta que lo asuman.
+  accepted  Boolean   @default(true)
+  shareable Boolean   @default(false)
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
@@ -432,6 +487,7 @@ model Plan {
 
   quarters  Quarter[]
   kpis      PlanKPI[]
+  metricSelections QuarterMetricSelection[]
   proposals PlanProposal[]
   actions   PlanAction[]
   risks     PlanRisk[]
@@ -455,12 +511,17 @@ model PlanKPI {
   sourceKey    String?       @map("source_key")
   displayOrder Int           @default(0) @map("display_order")
   isPrincipal  Boolean       @default(false) @map("is_principal")
+  // Correspondencia canónica con ScorecardMetric (antes solo por nombre en
+  // sourceKey). null = sin mapeo revisado.
+  scorecardMetricId String?  @map("scorecard_metric_id")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
   plan    Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
   owner   User           @relation(fields: [ownerId], references: [id])
+  scorecardMetric ScorecardMetric? @relation(fields: [scorecardMetricId], references: [id])
   entries PlanKPIEntry[]
+  selections QuarterMetricSelection[]
 
   @@unique([planId, slug])
   @@map("plan_kpis")
@@ -548,4 +609,239 @@ model PlanRisk {
   plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@map("plan_risks")
+}
+
+// ---------------------------------------------------------------------------
+// Reporte de management: áreas, selección trimestral, preparación de líderes,
+// evidencia de check-ins y publicación al cerrar la reunión.
+// ---------------------------------------------------------------------------
+
+// Área de reporte. Independiente del rol de autenticación de User y del enum
+// PlanArea (que sigue agrupando Ventas y Growth bajo COMERCIAL).
+model ReportArea {
+  id          String   @id @default(uuid())
+  key         String   @unique // ventas, growth, customer, producto, ingenieria
+  name        String
+  sortOrder   Int      @default(0) @map("sort_order")
+  leaderId    String?  @map("leader_id")
+  alternateId String?  @map("alternate_id")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  leader     User?  @relation("areaLeader", fields: [leaderId], references: [id])
+  alternate  User?  @relation("areaAlternate", fields: [alternateId], references: [id])
+  members    ReportMember[]
+  quarterConfigs AreaQuarterConfig[]
+  selections QuarterMetricSelection[]
+  leaderPreps LeaderPrep[]
+
+  @@map("report_areas")
+}
+
+// Pertenencia con vigencia + vínculo verificado a Slack. No hay clave por
+// nombre: la identidad es slackUserId (o userId), y sin verificar queda
+// pendiente de revisión.
+model ReportMember {
+  id               String    @id @default(uuid())
+  areaId           String    @map("area_id")
+  userId           String?   @map("user_id")
+  displayName      String    @map("display_name")
+  slackWorkspaceId String?   @map("slack_workspace_id")
+  slackUserId      String?   @map("slack_user_id")
+  identityVerified Boolean   @default(false) @map("identity_verified")
+  isLeader         Boolean   @default(false) @map("is_leader")
+  validFrom        DateTime  @default(now()) @map("valid_from")
+  validTo          DateTime? @map("valid_to")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  area ReportArea @relation(fields: [areaId], references: [id])
+  user User?      @relation(fields: [userId], references: [id])
+
+  @@index([slackUserId])
+  @@index([areaId])
+  @@map("report_members")
+}
+
+// Por trimestre y área: Rock principal y responsable efectivo del reporte.
+model AreaQuarterConfig {
+  id            String   @id @default(uuid())
+  quarterId     String   @map("quarter_id")
+  areaId        String   @map("area_id")
+  principalRockId String? @map("principal_rock_id")
+  reportOwnerId String?  @map("report_owner_id")
+  status        String   @default("pending") // pending | approved
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  quarter Quarter    @relation(fields: [quarterId], references: [id])
+  area    ReportArea @relation(fields: [areaId], references: [id])
+
+  @@unique([quarterId, areaId])
+  @@map("area_quarter_configs")
+}
+
+// Única fuente de la lista principal de métricas por trimestre: Plan H2,
+// Scorecard, L10 y los check-ins la leen. Ocultar una métrica = no estar acá;
+// sus datos, fuentes e histórico no se tocan. Una fila sin planKpiId ni
+// scorecardMetricId es una definición propuesta (proposalKey) pendiente de
+// configuración: se muestra como pendiente, nunca como un cero.
+model QuarterMetricSelection {
+  id               String   @id @default(uuid())
+  planId           String   @map("plan_id")
+  quarterId        String   @map("quarter_id")
+  areaId           String   @map("area_id")
+  planKpiId        String?  @map("plan_kpi_id")
+  scorecardMetricId String? @map("scorecard_metric_id")
+  proposalKey      String?  @map("proposal_key")
+  displayLabel     String?  @map("display_label")
+  sortOrder        Int      @default(0) @map("sort_order")
+  reportOwnerId    String?  @map("report_owner_id")
+  // pending | approved. Las pendientes no se evalúan ni generan semáforo.
+  approvalStatus   String   @default("pending") @map("approval_status")
+  // Definición versionada: unidad, frecuencia, dirección, fuente, numerador,
+  // denominador, versión de fórmula, meta confirmada o null.
+  definition       Json?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  plan    Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  quarter Quarter    @relation(fields: [quarterId], references: [id])
+  area    ReportArea @relation(fields: [areaId], references: [id])
+  planKpi PlanKPI?   @relation(fields: [planKpiId], references: [id])
+  scorecardMetric ScorecardMetric? @relation(fields: [scorecardMetricId], references: [id])
+
+  @@unique([quarterId, planKpiId])
+  @@unique([quarterId, scorecardMetricId])
+  @@unique([quarterId, proposalKey])
+  @@index([planId, quarterId])
+  @@map("quarter_metric_selections")
+}
+
+// Evento de Slack persistido antes de responder, para deduplicar por
+// event_id y poder reprocesar si el procesamiento falló.
+model SlackEvent {
+  id          String    @id @default(uuid())
+  eventId     String    @unique @map("event_id")
+  eventType   String    @map("event_type")
+  channelId   String?   @map("channel_id")
+  messageTs   String?   @map("message_ts")
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+
+  @@map("slack_events")
+}
+
+// Respuesta del check-in del jueves, guardada en EOS primero (Notion es la
+// proyección). Conserva el original, el autor y el permalink; NO guarda
+// energía ni motivo personal.
+model CheckinEvidence {
+  id          String    @id @default(uuid())
+  channelId   String    @map("channel_id")
+  messageTs   String    @map("message_ts")
+  slackUserId String    @map("slack_user_id")
+  userId      String?   @map("user_id")
+  areaKey     String?   @map("area_key")
+  authorName  String    @map("author_name")
+  periodStart DateTime  @map("period_start")
+  reportedAt  DateTime  @map("reported_at")
+  originalText String   @map("original_text")
+  win         String?
+  challenge   String?
+  permalink   String?
+  notionPageId String?  @map("notion_page_id")
+  // [{ at, text, win, challenge }] — cada edición agrega una revisión.
+  revisions   Json      @default("[]")
+  deletedAt   DateTime? @map("deleted_at")
+  // Revisada y marcada como compartible por quien envía el resumen.
+  shareable   Boolean   @default(false)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([channelId, messageTs])
+  @@index([periodStart])
+  @@map("checkin_evidence")
+}
+
+// Preparación de un líder para una reunión: los cinco bloques y su estado.
+model LeaderPrep {
+  id          String    @id @default(uuid())
+  meetingId   String    @map("meeting_id")
+  areaId      String    @map("area_id")
+  leaderId    String    @map("leader_id")
+  status      String    @default("draft") // draft | confirmed
+  // { rock, scorecard, wins, agreements, ids } — cada bloque con su estado.
+  blocks      Json      @default("{}")
+  confirmedAt DateTime? @map("confirmed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  meeting L10Meeting @relation(fields: [meetingId], references: [id])
+  area    ReportArea @relation(fields: [areaId], references: [id])
+  leader  User       @relation(fields: [leaderId], references: [id])
+
+  @@unique([meetingId, areaId])
+  @@map("leader_preps")
+}
+
+// Snapshot inmutable del resumen de una reunión cerrada. version crece solo
+// cuando el contenido compartible cambia después de publicar.
+model MeetingReport {
+  id          String   @id @default(uuid())
+  meetingId   String   @map("meeting_id")
+  version     Int
+  kind        String   @default("original") // original | update
+  parentReportId String? @map("parent_report_id")
+  // pending | publishing | published | failed | uncertain | skipped | cancelled
+  status      String   @default("pending")
+  quarterId   String   @map("quarter_id")
+  closeOrigin String   @map("close_origin")
+  closedById  String?  @map("closed_by_id")
+  closedAt    DateTime @map("closed_at")
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  cutAt       DateTime @map("cut_at")
+  audience    String   @default("company")
+  channel     String?
+  content     Json
+  contentHash String   @map("content_hash")
+  publishRequested Boolean @default(false) @map("publish_requested")
+  skipReason  String?  @map("skip_reason")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  meeting    L10Meeting       @relation(fields: [meetingId], references: [id])
+  deliveries ReportDelivery[]
+
+  @@unique([meetingId, version])
+  @@map("meeting_reports")
+}
+
+// Una fila por destino y parte del hilo. idempotencyKey es única: doble clic,
+// retries y dos workers no pueden crear dos entregas lógicas.
+model ReportDelivery {
+  id              String    @id @default(uuid())
+  reportId        String    @map("report_id")
+  destination     String    // slack | notion
+  partIndex       Int       @default(0) @map("part_index")
+  idempotencyKey  String    @unique @map("idempotency_key")
+  // pending | sending | sent | failed | uncertain | cancelled
+  status          String    @default("pending")
+  attempts        Int       @default(0)
+  lockedUntil     DateTime? @map("locked_until")
+  providerChannel String?   @map("provider_channel")
+  providerMessageId String? @map("provider_message_id")
+  threadTs        String?   @map("thread_ts")
+  lastError       String?   @map("last_error")
+  sentAt          DateTime? @map("sent_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  report MeetingReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, destination, partIndex])
+  @@index([status])
+  @@map("report_deliveries")
 }
