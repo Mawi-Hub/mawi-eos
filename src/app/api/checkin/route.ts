@@ -6,7 +6,7 @@ import {
   processCheckinDelete,
 } from "@/lib/integrations/checkin";
 import { processKpiDmEvent } from "@/lib/integrations/kpiCheckin";
-import { prismaSlackEventStore, receiveSlackEvent } from "@/lib/integrations/slackEvents";
+import { prismaIsReportThread, prismaSlackEventStore, receiveSlackEvent } from "@/lib/integrations/slackEvents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
 
   const result = await receiveSlackEvent(body as Parameters<typeof receiveSlackEvent>[0], {
     store: prismaSlackEventStore,
+    isReportThread: prismaIsReportThread,
     checkinChannel: process.env.CHECKIN_CHANNEL_ID,
     schedule: (task) => after(task),
     processors: {

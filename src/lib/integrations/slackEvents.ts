@@ -92,8 +92,22 @@ export type EventProcessors = {
   checkin_delete: (event: SlackMessageEvent) => Promise<void>;
 };
 
+// ¿Este hilo cuelga de un resumen de management publicado? Las respuestas y
+// reacciones de la gente a ese resumen no son check-ins: se ignoran sin gastar
+// una llamada a Claude ni arriesgar que un comentario se guarde como aporte.
+export async function prismaIsReportThread(channelId: string, threadTs: string): Promise<boolean> {
+  const { prisma } = await import("@/lib/db");
+  const found = await prisma.reportDelivery.findFirst({
+    where: { destination: "slack", providerChannel: channelId, OR: [{ providerMessageId: threadTs }, { threadTs }] },
+    select: { id: true },
+  });
+  return found !== null;
+}
+
 export type ReceiveDeps = {
   store: SlackEventStore;
+  // Opcional: sin esto no se filtran los hilos del resumen.
+  isReportThread?: (channelId: string, threadTs: string) => Promise<boolean>;
   processors: EventProcessors;
   checkinChannel: string | undefined;
   // `after` de Next.js (o un ejecutor en línea en pruebas).
@@ -129,6 +143,18 @@ export async function receiveSlackEvent(
   const event = body.event;
   const classified = classifySlackEvent(event, deps.checkinChannel);
   if (!classified || !event) return { status: 200, outcome: "ignored" };
+
+  // Mensajes dentro del hilo de un resumen publicado: no son check-ins.
+  if (deps.isReportThread && (classified.kind === "checkin_message" || classified.kind === "checkin_edit")) {
+    const threadTs = classified.kind === "checkin_edit" ? event.message?.thread_ts : event.thread_ts;
+    if (threadTs && threadTs !== classified.messageTs) {
+      try {
+        if (await deps.isReportThread(classified.channelId, threadTs)) return { status: 200, outcome: "ignored" };
+      } catch {
+        // Si la consulta falla seguimos el flujo normal: nunca se pierde un check-in.
+      }
+    }
+  }
 
   // Sin event_id no hay forma de deduplicar (Slack siempre lo envía en event_callback).
   if (!body.event_id) return { status: 200, outcome: "ignored" };

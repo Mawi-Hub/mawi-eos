@@ -23,6 +23,7 @@ evaluaciones, ranking, migración de Notion, cambio de permisos de páginas o ca
 | `REPORT_SELECTION_ENABLED=1` | Las vistas usan la selección trimestral. Apagada = comportamiento anterior (`isActive`). |
 | `LEADER_CHECKIN_V2=1` | Check-in de líderes de cinco bloques. |
 | `REPORT_PUBLISH_ENABLED=1` **y** `REPORT_CHANNEL_ID=<canal>` | Habilita «Cerrar y enviar». Sin ambas solo se puede «Cerrar sin enviar». El canal **no** se infiere del de la prelectura privada. |
+| (canal del check-in) | Si `REPORT_CHANNEL_ID` es el mismo canal del check-in del jueves, las respuestas dentro del hilo de un resumen publicado se **ignoran** (no cuentan como check-in). El bot debe estar invitado al canal. |
 | `REPORT_NOTION_PARENT_PAGE_ID` | Opcional: proyección unidireccional del resumen en una página de Notion. |
 | `REPORT_COMPANY_METRICS` | Opcional: nombres (coma) de métricas de empresa (NDR, MRR, clientes nuevos) que se pueden mostrar a esta audiencia. Vacío = no se muestran. |
 | `REPORT_REPLACE_MONDAY_DIGEST=1` | Apaga **solo** el resumen general del lunes (`/api/checkin/digest`) cuando el nuevo lo sustituye. No toca el L10 privado. |
