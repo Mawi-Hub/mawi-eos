@@ -95,6 +95,22 @@ Cuidado: `npm run test:checkin` usa Claude real y `preview:checkin` lee Notion y
 `scripts/send-kpi-checkin.ts --preview` crea sesiones y manda DMs, y `--reset` borra sesiones aun con `--dry-run`.
 `scripts/test-kpi-checkin.ts` (dry-run) lee la base y Slack sin crear sesiones ni DMs. **No ejecutar `prisma/seed.mjs`** (borra scorecard) ni `prisma/seeds/planH2.ts` (borra PlanKPI fuera de su lista).
 
+## Probar en local (sin tocar producción)
+
+1. Postgres local (Homebrew): `brew install postgresql@17 && brew services start postgresql@17`, luego `createdb mawi_eos_dev`.
+2. Esquema y datos de demo (el script se niega a correr si la base no es localhost):
+   ```bash
+   export DATABASE_URL=postgresql://$USER@localhost:5432/mawi_eos_dev
+   npx prisma db push && npx tsx scripts/seed-local-demo.ts
+   ```
+3. Levantar la app con el reporte activado y **Slack/Notion/HubSpot/Claude desactivados**:
+   ```bash
+   DATABASE_URL=$DATABASE_URL NEXTAUTH_URL=http://localhost:3100 REPORT_SELECTION_ENABLED=1 LEADER_CHECKIN_V2=1 \
+   SLACK_BOT_TOKEN= NOTION_API_KEY= HUBSPOT_API_KEY= ANTHROPIC_API_KEY= npx next dev -p 3100
+   ```
+   Entrar con `sergio@mawi.io` (contraseña de demo en `scripts/seed-local-demo.ts`, solo para esa base local). Ver Scorecard, Plan H2 y L10 → «Cerrar reunión».
+4. Probar Slack **solo a tu DM**: `node --env-file=.env.local node_modules/.bin/tsx scripts/slack-dm-me.ts open` imprime el canal de tu DM con el bot; para enviar el resumen real a ese DM, arrancar la app con `REPORT_PUBLISH_ENABLED=1 REPORT_CHANNEL_ID=<ese canal>` (y el token de Slack) y usar «Cerrar y enviar resumen». `slack-dm-me.ts prep` manda la preparación de líderes de prueba. El destinatario está fijo en el script.
+
 ## Pendiente / límites conocidos
 
 - Hora del check-in de líderes: se mantiene jueves 16:00 CR (decisión del CEO).

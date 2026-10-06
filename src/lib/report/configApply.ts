@@ -157,6 +157,8 @@ export async function applyReportConfig(config: ReportConfig, options: { apply: 
       displayLabel: p.sel.label ?? null,
       sortOrder: p.sel.order ?? 0,
       approvalStatus: p.sel.approvalStatus ?? "pending",
+      // Responsable del reporte = líder del área (no el dueño técnico de la métrica).
+      reportOwnerId: config.areas.find((a) => a.key === p.sel.areaKey)?.leaderEmail ? userByEmail.get(config.areas.find((a) => a.key === p.sel.areaKey)!.leaderEmail as string) ?? null : null,
       definition: (p.sel.definition ?? {}) as Prisma.InputJsonValue,
     };
     if (existing) await prisma.quarterMetricSelection.update({ where: { id: existing.id }, data });
