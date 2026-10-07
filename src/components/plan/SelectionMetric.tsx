@@ -5,6 +5,7 @@
 import type { DataState } from "@/lib/metrics/dataState";
 import { DATA_STATE_LABEL } from "@/lib/metrics/dataState";
 import type { SelectionMetricView } from "@/lib/selection/types";
+import { PENDING_EXPLAINER, pendingMissing } from "@/lib/selection/pending";
 
 const STATE_STYLE: Record<DataState, string> = {
   value: "bg-gray-100 text-gray-700",
@@ -37,11 +38,27 @@ export function SignalBadge({ signal }: { signal: SelectionMetricView["signal"] 
   return <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${s.className}`}>{s.label}</span>;
 }
 
-export function PendingConfigBadge() {
+export function PendingConfigBadge({ view }: { view?: SelectionMetricView }) {
+  const missing = view ? pendingMissing(view) : [];
   return (
-    <span className="inline-flex rounded-full border border-dashed border-gray-400 bg-white px-2 py-0.5 text-xs font-medium text-gray-500">
-      Pendiente de configuración
-    </span>
+    <div className="space-y-0.5" title={missing.map((m) => `${m.label}: ${m.hint}`).join("\n") || undefined}>
+      <span className="inline-flex rounded-full border border-dashed border-gray-400 bg-white px-2 py-0.5 text-xs font-medium text-gray-500">
+        Pendiente de configuración
+      </span>
+      {missing.length > 0 && (
+        <div className="text-[11px] leading-tight text-gray-500">Falta: {missing.map((m) => m.label.toLowerCase()).join(" · ")}</div>
+      )}
+    </div>
+  );
+}
+
+// Explica en una línea qué significa "pendiente de configuración".
+export function PendingExplainer() {
+  return (
+    <details className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-600">
+      <summary className="cursor-pointer select-none font-medium text-gray-700">¿Qué significa «Pendiente de configuración»?</summary>
+      <p className="mt-2 text-xs leading-relaxed">{PENDING_EXPLAINER}</p>
+    </details>
   );
 }
 
@@ -50,7 +67,7 @@ const DATA_STATES_WITH_VALUE: ReadonlySet<DataState> = new Set(["value", "confir
 // Valor, o el estado que explica por qué no hay uno. Una fila pendiente de
 // configuración no muestra ningún valor ni 0.
 export function SelectionMetricValue({ view }: { view: SelectionMetricView }) {
-  if (view.pendingConfig) return <PendingConfigBadge />;
+  if (view.pendingConfig) return <PendingConfigBadge view={view} />;
 
   const hasValue = DATA_STATES_WITH_VALUE.has(view.dataState) && view.valueText !== null;
   return (

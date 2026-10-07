@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PlanNorthStars } from "@/components/plan/PlanNorthStars";
-import { PlanSelectionAreaSection } from "@/components/plan/PlanSelectionAreaSection";
+import { PlanSelectionAreaSection, type RowTrend } from "@/components/plan/PlanSelectionAreaSection";
+import { PendingExplainer } from "@/components/plan/SelectionMetric";
+import { findEntryForCurrentMonth } from "@/lib/plan/calculations";
 import type { KPIDirection } from "@/lib/plan/calculations";
 import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
 import { getQuarterSelection } from "@/lib/selection/quarterSelection";
@@ -137,6 +139,25 @@ export async function SelectionOverview({
   );
   const northStarKpis = kpisForUI.filter((k) => k.area === "NORTH_STAR");
 
+  // Esperado (plan) vs real por KPI, con el mismo valor efectivo que el detalle.
+  const monthNames = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const trends: Record<string, RowTrend> = {};
+  for (const row of selection?.rows ?? []) {
+    // El KPI del plan de una fila: el elegido, o el mapeado a la métrica del Scorecard.
+    const k = kpisForUI.find((x) => (row.planKpiId ? x.id === row.planKpiId : row.scorecardMetricId ? x.scorecardMetricId === row.scorecardMetricId : false));
+    if (!k) continue;
+    const entries = k.entries.map((e) => ({ period: new Date(e.period), projected: e.projected, actual: e.actual }));
+    const now = findEntryForCurrentMonth(entries);
+    trends[row.selectionId] = {
+      kpiId: k.id,
+      unit: k.unit,
+      target: k.target,
+      entries: entries.map((e) => ({ period: e.period.toISOString(), projected: e.projected, actual: e.actual })),
+      expectedNow: now?.projected ?? null,
+      expectedLabel: now ? `plan ${monthNames[now.period.getUTCMonth()]}` : null,
+    };
+  }
+
   const quarters = sortQuarters(plan.quarters);
 
   return (
@@ -179,8 +200,9 @@ export async function SelectionOverview({
         </section>
       )}
 
-      <section className="space-y-6">
+      <section className="space-y-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Áreas del trimestre</h2>
+        {hasSelection && <PendingExplainer />}
         {areas.map((area) => {
           const cfg = configByArea.get(area.id);
           const rock = cfg?.principalRockId ? rockById.get(cfg.principalRockId) : null;
@@ -191,6 +213,7 @@ export async function SelectionOverview({
               name={area.name}
               ownerName={ownerNameFor(area)}
               rows={hasSelection ? rowsByArea.get(area.key) ?? [] : null}
+              trends={trends}
               principalRock={rock ? { title: rock.title, ownerName: rock.owner.name, progress: rock.progress, status: rock.status } : null}
               actions={(actionsByKey.get(area.key as DisplayAreaKey) ?? []).map(toItem)}
               risks={(risksByKey.get(area.key as DisplayAreaKey) ?? []).map(toItem)}

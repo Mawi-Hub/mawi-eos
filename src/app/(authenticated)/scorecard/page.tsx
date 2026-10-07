@@ -7,7 +7,7 @@ import type { SelectionMetricView } from "@/lib/selection/types";
 import { formatMetricValue } from "@/lib/metrics/format";
 import { isActionableState, resolveDataState } from "@/lib/metrics/dataState";
 import { quarterLabel, resolveQuarter, sortQuarters } from "@/lib/plan/quarterPick";
-import { DataStateBadge, SelectionMetricValue, SignalBadge } from "@/components/plan/SelectionMetric";
+import { DataStateBadge, PendingExplainer, SelectionMetricValue, SignalBadge } from "@/components/plan/SelectionMetric";
 import { ScorecardEntryForm } from "./entry-form";
 import { ScorecardSyncButton } from "./sync-button";
 import { ScorecardCatalogTable, SOURCE_META, normalizeSource } from "./catalog-table";
@@ -132,6 +132,8 @@ export default async function ScorecardPage({
           Legado sin selección registrada para Q{quarter.quarter}.
         </div>
       )}
+
+      {groups.some((g) => g.rows.some((r) => r.pendingConfig)) && <PendingExplainer />}
 
       {groups.map((group) => (
         <div key={group.areaId}>

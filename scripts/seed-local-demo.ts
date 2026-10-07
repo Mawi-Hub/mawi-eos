@@ -69,14 +69,26 @@ async function main() {
   await entry(ndr.id, { actualValue: 97.2, autoSynced: true, status: "on_track" });
   await entry(csat.id, { actualValue: 4, status: "pending", dataState: null });
 
-  const kpi = (slug: string, name: string, metricName: string, area: "NORTH_STAR" | "COMERCIAL", owner: string, principal = false) =>
-    prisma.planKPI.upsert({
-      where: { planId_slug: { planId: plan.id, slug } },
-      update: {},
-      create: { planId: plan.id, slug, name, category: "REVENUE", area, baseline: 0, target: 100, unit: "PCT", direction: "ABOVE", ownerId: owner, sourceType: "SCORECARD", sourceKey: metricName, isPrincipal: principal },
-    });
-  await kpi("ndr", "NDR", "NDR", "NORTH_STAR", sergio.id, true);
-  await kpi("show_rate", "Show rate", "Show Rate", "COMERCIAL", fede.id);
+  const kpi = (slug: string, name: string, metricName: string, area: "NORTH_STAR" | "COMERCIAL", owner: string, target: number, principal = false) => {
+    const data = { name, category: "REVENUE" as const, area, baseline: 0.5, target, unit: "PCT", direction: "ABOVE" as const, ownerId: owner, sourceType: "SCORECARD" as const, sourceKey: metricName, isPrincipal: principal };
+    return prisma.planKPI.upsert({ where: { planId_slug: { planId: plan.id, slug } }, update: data, create: { planId: plan.id, slug, ...data } });
+  };
+  const ndrKpi = await kpi("ndr", "NDR", "NDR", "NORTH_STAR", sergio.id, 1.0, true);
+  const showKpi = await kpi("show_rate", "Show rate", "Show Rate", "COMERCIAL", fede.id, 0.7);
+  // Esperado (plan) vs real por mes, para ver las mini gráficas.
+  const months = ["2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01", "2026-11-01", "2026-12-01"];
+  const series = async (kpiId: string, projected: number[], actual: (number | null)[]) => {
+    for (let i = 0; i < months.length; i++) {
+      const period = new Date(`${months[i]}T00:00:00Z`);
+      await prisma.planKPIEntry.upsert({
+        where: { kpiId_period: { kpiId, period } },
+        update: { projected: projected[i], actual: actual[i] },
+        create: { kpiId, period, projected: projected[i], actual: actual[i] },
+      });
+    }
+  };
+  await series(showKpi.id, [0.55, 0.58, 0.61, 0.64, 0.67, 0.7], [0.5, 0.57, 0.63, null, null, null]);
+  await series(ndrKpi.id, [0.9, 0.92, 0.94, 0.96, 0.98, 1.0], [0.91, 0.9, 0.93, null, null, null]);
 
   const rock = (owner: string, title: string, status: string, progress: number) =>
     prisma.rock.findFirst({ where: { quarterId: q4.id, ownerId: owner, title } }).then((r) =>
