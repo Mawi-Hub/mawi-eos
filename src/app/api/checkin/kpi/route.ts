@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { startKpiCheckins } from "@/lib/integrations/kpiCheckin";
+import { requireCronAuth } from "@/lib/cronAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,10 +11,8 @@ export const maxDuration = 60;
 // manda `Authorization: Bearer <CRON_SECRET>` cuando la env var existe.
 // `?dryRun=1` resuelve usuarios de Slack sin abrir DMs ni crear sesiones.
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (secret && request.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   const query = new URL(request.url).searchParams;
   const dryRun = query.get("dryRun") === "1";

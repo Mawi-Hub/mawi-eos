@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SyncButton } from "./sync-button";
+import { computeNdr, formatRate, type RateDetail } from "@/lib/l10/dashboardFormat";
 
 interface MRREntry {
   date: string;
@@ -14,9 +15,12 @@ interface MRREntry {
 
 interface PipelineMetrics {
   leadsByChannel: Record<string, number>;
-  showRate: number;
-  closeRate: number;
-  avgSalesCycleDays: number;
+  // null = sin muestra (nunca 0.0%). El detalle n/N puede venir o no.
+  showRate: number | null;
+  closeRate: number | null;
+  showRateDetail?: RateDetail;
+  closeRateDetail?: RateDetail;
+  avgSalesCycleDays: number | null;
 }
 
 function KPICard({ label, value, subtitle, color }: { label: string; value: string; subtitle?: string; color: string }) {
@@ -57,7 +61,12 @@ export default async function DashboardPage() {
   const lastMRR = mrrData[mrrData.length - 1];
   const prevMRR = mrrData[mrrData.length - 2];
 
+  const ndr = computeNdr(prevMRR, lastMRR);
+
   const pipelineMetrics = (cache["hubspot:pipeline_metrics"]?.data || null) as PipelineMetrics | null;
+
+  const showRate = formatRate(pipelineMetrics?.showRate, pipelineMetrics?.showRateDetail);
+  const closeRate = formatRate(pipelineMetrics?.closeRate, pipelineMetrics?.closeRateDetail);
 
   const cmSyncedAt = cache["chartmogul:mrr_breakdown"]?.syncedAt;
   const hsSyncedAt = cache["hubspot:pipeline_metrics"]?.syncedAt;
@@ -78,6 +87,32 @@ export default async function DashboardPage() {
         <SyncButton />
       </div>
 
+      {/* Portada: como máximo los tres resultados de empresa. */}
+      <section>
+        <div className="mb-4 border-l-4 border-gray-900 pl-3">
+          <h2 className="text-sm font-semibold text-gray-700">Resultados de la empresa</h2>
+          <p className="text-xs text-gray-400">NDR, MRR y clientes nuevos</p>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <KPICard
+            label="NDR del mes"
+            value={ndr === null ? "No disponible" : `${ndr.toFixed(1)}%`}
+            subtitle={ndr === null ? "Falta el MRR del mes anterior" : "Calculado del desglose mensual de MRR"}
+            color="text-gray-900"
+          />
+          <KPICard
+            label="MRR Neto"
+            value={lastMRR ? `$${lastMRR.mrr.toLocaleString()}` : "No disponible"}
+            subtitle={lastMRR && prevMRR && prevMRR.mrr > 0 ? `${((lastMRR.mrr - prevMRR.mrr) / prevMRR.mrr * 100).toFixed(1)}% vs mes anterior` : undefined}
+            color="text-gray-900"
+          />
+          <KPICard label="Clientes nuevos" value="No disponible" subtitle="Aún no se sincroniza este dato en el tablero" color="text-gray-400" />
+        </div>
+      </section>
+
+      <details className="rounded-lg border border-gray-200 bg-white">
+        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">Ver diagnóstico</summary>
+        <div className="space-y-8 border-t border-gray-100 p-5">
       {/* Layer 1: Business Health - ChartMogul */}
       <section>
         <div className="mb-4 flex items-center gap-3 border-l-4 border-blue-500 pl-3">
@@ -144,19 +179,19 @@ export default async function DashboardPage() {
             />
             <KPICard
               label="Show Rate"
-              value={`${pipelineMetrics.showRate.toFixed(1)}%`}
-              subtitle="Demos realizadas / agendadas"
-              color="text-gray-900"
+              value={showRate.text}
+              subtitle={`Demos realizadas / agendadas${showRate.detail ? ` · ${showRate.detail}` : ""}`}
+              color={showRate.hasSample ? "text-gray-900" : "text-gray-400"}
             />
             <KPICard
               label="Close Rate"
-              value={`${pipelineMetrics.closeRate.toFixed(1)}%`}
-              subtitle="Cierres / demos realizadas"
-              color="text-gray-900"
+              value={closeRate.text}
+              subtitle={`Cierres / demos realizadas${closeRate.detail ? ` · ${closeRate.detail}` : ""}`}
+              color={closeRate.hasSample ? "text-gray-900" : "text-gray-400"}
             />
             <KPICard
               label="Ciclo de Venta"
-              value={`${pipelineMetrics.avgSalesCycleDays.toFixed(0)} días`}
+              value={typeof pipelineMetrics.avgSalesCycleDays === "number" && Number.isFinite(pipelineMetrics.avgSalesCycleDays) ? `${pipelineMetrics.avgSalesCycleDays.toFixed(0)} días` : "Sin muestra"}
               subtitle="Promedio lead → cierre"
               color="text-gray-900"
             />
@@ -183,6 +218,7 @@ export default async function DashboardPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="text-xs font-medium text-gray-500">Adopción en 7 días</div>
             <div className="mt-2 text-2xl font-bold text-gray-900">—</div>
+            <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">No disponible</div>
             <div className="mt-1 text-xs text-gray-400">% nuevos clientes con ≥1 presupuesto y ≥1 gasto en 7 días</div>
             <div className="mt-2">
               <span className="inline-flex rounded bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700">PostgreSQL</span>
@@ -191,12 +227,14 @@ export default async function DashboardPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="text-xs font-medium text-gray-500">Clientes en riesgo</div>
             <div className="mt-2 text-2xl font-bold text-red-600">—</div>
+            <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">No disponible</div>
             <div className="mt-1 text-xs text-gray-400">PES 0-1 por más de 21 días consecutivos</div>
             <SourceBadge source="posthog" />
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <div className="text-xs font-medium text-gray-500">Product Engagement Score</div>
             <div className="mt-2 text-2xl font-bold text-gray-900">—</div>
+            <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">No disponible</div>
             <div className="mt-1 text-xs text-gray-400">0-4 puntos: sesiones, presupuesto, gastos, usuarios activos</div>
             <SourceBadge source="posthog" />
           </div>
@@ -210,6 +248,8 @@ export default async function DashboardPage() {
           <span className="inline-flex rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">PostgreSQL</span> Adopción: endpoint read-only en backoffice (~30 min).
         </div>
       </section>
+        </div>
+      </details>
     </div>
   );
 }

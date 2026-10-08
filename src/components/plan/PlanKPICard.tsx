@@ -22,6 +22,7 @@ export function PlanKPICard({
   entries,
   linkable = true,
   subtitle,
+  badge,
 }: {
   planId: string;
   kpiId: string;
@@ -33,6 +34,8 @@ export function PlanKPICard({
   entries: Entry[];
   linkable?: boolean;
   subtitle?: string;
+  // Etiqueta corta junto al nombre (p. ej. "Fuera del trimestre").
+  badge?: string;
 }) {
   const normalized = entries.map((e) => ({
     period: new Date(e.period),
@@ -55,6 +58,11 @@ export function PlanKPICard({
       <div className="mb-2 flex items-start justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">{name}</h3>
+          {badge && (
+            <span className="mt-0.5 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+              {badge}
+            </span>
+          )}
           <p className="text-xs text-gray-500">{subtitle ?? ownerName}</p>
         </div>
         <PlanSemaforo status={status} />

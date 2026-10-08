@@ -13,7 +13,12 @@
 
 import { prisma } from "@/lib/db";
 import { calculateStatus } from "@/lib/utils";
+import { appUrl, isLeaderCheckinV2 } from "@/lib/report/config";
+import { checkinPeriodStart } from "@/lib/time/costaRica";
 import { postSlackMessage, type SlackMessageEvent } from "./checkin";
+import { isPrepStep, handlePrepReply, startPrep, type PrepContext, type PrepDeps } from "./leaderPrep";
+import { prismaPrepData } from "./leaderPrepData";
+import { mondayOfWeek, quarterIdForDate, saveManualEntry } from "./manualEntry";
 import type { KpiCheckinSession, ScorecardMetric, User } from "@/generated/prisma/client";
 
 // Métricas de contexto que se muestran a todos en el paso "ver métricas".
@@ -119,36 +124,9 @@ async function claudeJson<T>(prompt: string): Promise<T | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Period + quarter helpers (same conventions as /api/scorecard manual entry)
+// Period + quarter helpers viven en ./manualEntry (mismas convenciones que
+// /api/scorecard); se comparten con el check-in v2.
 // ---------------------------------------------------------------------------
-
-function mondayOfWeek(now: Date): Date {
-  const d = new Date(now);
-  const day = d.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + mondayOffset);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function currentPeriod(frequency: string, now = new Date()): { start: Date; end: Date } {
-  if (frequency === "weekly" || frequency === "daily") {
-    const start = mondayOfWeek(now);
-    return { start, end: new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000) };
-  }
-  // monthly / biweekly → calendar month, igual que el entry manual.
-  return {
-    start: new Date(now.getFullYear(), now.getMonth(), 1),
-    end: new Date(now.getFullYear(), now.getMonth() + 1, 0),
-  };
-}
-
-async function quarterIdForDate(d: Date): Promise<string | null> {
-  const quarter = await prisma.quarter.findFirst({
-    where: { startDate: { lte: d }, endDate: { gte: d } },
-  });
-  return quarter?.id ?? null;
-}
 
 // Los KPIs que le tocan a esa persona. La prueba usa exactamente los mismos
 // que la corrida real (solo cambia que no se escribe nada), así el ensayo
@@ -169,6 +147,8 @@ export type KpiCheckinStartResult = {
   sent: string[];
   skipped: { name: string; reason: string }[];
   dryRun: boolean;
+  // Con LEADER_CHECKIN_V2=1: quiénes recibieron el flujo anterior y por qué.
+  legacyFallback?: { name: string; reason: string }[];
 };
 
 export type StartKpiCheckinOptions = {
@@ -201,6 +181,28 @@ export async function startKpiCheckins(options?: StartKpiCheckinOptions): Promis
   const weekStart = mondayOfWeek(new Date());
   const result: KpiCheckinStartResult = { sent: [], skipped: [], dryRun };
 
+  // Check-in v2: quien lidera (o es alterno de) un área de reporte recibe los
+  // cinco bloques; el resto, el flujo de siempre. Con la bandera apagada no se
+  // consulta nada de esto.
+  const v2Enabled = isLeaderCheckinV2() && !preview;
+  const areaByUser = new Map<string, { id: string; key: string; name: string; isLeader: boolean }>();
+  if (v2Enabled) {
+    result.legacyFallback = [];
+    const areas = await prisma.reportArea.findMany({ where: { active: true }, orderBy: { sortOrder: "asc" } });
+    for (const area of areas) {
+      if (area.leaderId && !areaByUser.get(area.leaderId)?.isLeader) {
+        areaByUser.set(area.leaderId, { id: area.id, key: area.key, name: area.name, isLeader: true });
+      }
+    }
+    for (const area of areas) {
+      if (area.alternateId && !areaByUser.has(area.alternateId)) {
+        areaByUser.set(area.alternateId, { id: area.id, key: area.key, name: area.name, isLeader: false });
+      }
+    }
+    // Primero quienes lideran: si el alterno llega después, el área ya está tomada.
+    targets = [...targets].sort((x, y) => Number(areaByUser.get(y.id)?.isLeader ?? false) - Number(areaByUser.get(x.id)?.isLeader ?? false));
+  }
+
   for (const owner of targets) {
     const existing = await prisma.kpiCheckinSession.findUnique({
       where: { userId_weekStart: { userId: owner.id, weekStart } },
@@ -225,6 +227,20 @@ export async function startKpiCheckins(options?: StartKpiCheckinOptions): Promis
     if (!dmChannel) {
       result.skipped.push({ name: owner.name, reason: "no se pudo abrir DM (¿falta scope im:write?)" });
       continue;
+    }
+
+    if (v2Enabled) {
+      const area = areaByUser.get(owner.id);
+      if (!area) {
+        result.legacyFallback!.push({ name: owner.name, reason: "no lidera ni es alterno de un área de reporte" });
+      } else {
+        const started = await startLeaderPrep(owner, slackUserId, dmChannel, weekStart, area);
+        if (started === "started") {
+          result.sent.push(owner.name);
+          continue;
+        }
+        result.legacyFallback!.push({ name: owner.name, reason: started });
+      }
     }
 
     await prisma.kpiCheckinSession.create({
@@ -266,7 +282,79 @@ export async function processKpiDmEvent(event: SlackMessageEvent): Promise<void>
   else if (session.step === "metrics") await handleMetrics(session, event.text);
   else if (session.step === "challenges" || session.step === "challenges_relink") {
     await handleChallenges(session, event.text);
+  } else if (isPrepStep(session.step)) {
+    // Sesiones del check-in v2: se atienden aunque la bandera se haya apagado
+    // después, para no dejar una conversación a medias.
+    await handlePrepDm(session, event.text);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Check-in v2 (LEADER_CHECKIN_V2=1): cinco bloques por área. La lógica está en
+// ./leaderPrep; acá solo se conectan Slack, Claude y la base de datos reales.
+// ---------------------------------------------------------------------------
+
+function prepDeps(): PrepDeps {
+  return {
+    now: () => new Date(),
+    // Cualquier falla de Claude (red, clave, JSON inválido) = null: no se escribe nada.
+    claude: async <T>(prompt: string) => {
+      try {
+        return await claudeJson<T>(prompt);
+      } catch {
+        return null;
+      }
+    },
+    post: postSlackMessage,
+    appUrl,
+    checkinPeriodStart,
+    data: prismaPrepData,
+  };
+}
+
+async function startLeaderPrep(
+  owner: User,
+  slackUserId: string,
+  dmChannel: string,
+  weekStart: Date,
+  area: { id: string; key: string; name: string },
+): Promise<"started" | string> {
+  const meeting = await findOrCreateUpcomingMeeting();
+  if (!meeting) return "no hay trimestre activo para preparar la reunión";
+
+  const prep = await prismaPrepData.ensurePrep(meeting.id, area.id, owner.id);
+  if (prep.leaderId !== owner.id) return `la preparación de ${area.name} ya la tiene su responsable`;
+
+  const session = await prisma.kpiCheckinSession.create({
+    data: { userId: owner.id, slackUserId, slackChannelId: dmChannel, weekStart, step: "prep_rock", preview: false },
+  });
+  const ctx: PrepContext = {
+    session: { id: session.id, slackChannelId: dmChannel },
+    user: { id: owner.id, name: owner.name },
+    area,
+    meeting: { id: meeting.id, quarterId: meeting.quarterId },
+  };
+  await startPrep(ctx, prep, prepDeps());
+  return "started";
+}
+
+async function handlePrepDm(session: SessionWithUser, text: string): Promise<void> {
+  const prep = await prisma.leaderPrep.findFirst({
+    where: { leaderId: session.userId, createdAt: { gte: session.weekStart } },
+    orderBy: { createdAt: "desc" },
+    include: { area: true, meeting: true },
+  });
+  if (!prep) {
+    await postSlackMessage(session.slackChannelId, "No encontré tu preparación de esta semana. Avisale a quien administra el check-in.");
+    return;
+  }
+  const ctx: PrepContext = {
+    session: { id: session.id, slackChannelId: session.slackChannelId },
+    user: { id: session.userId, name: session.user.name },
+    area: { id: prep.area.id, key: prep.area.key, name: prep.area.name },
+    meeting: { id: prep.meeting.id, quarterId: prep.meeting.quarterId },
+  };
+  await handlePrepReply(ctx, session.step, text, prepDeps());
 }
 
 async function advanceStep(sessionId: string, step: string): Promise<void> {
@@ -437,8 +525,6 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
     const metric = byName.get(v.nombre);
     if (!metric || typeof v.valor !== "number" || Number.isNaN(v.valor)) continue;
 
-    const { start, end } = currentPeriod(metric.frequency);
-
     if (session.preview) {
       const status = calculateStatus(v.valor, metric.targetNumeric, metric.targetDirection);
       savedNames.push(metric.name);
@@ -446,32 +532,8 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
       continue;
     }
 
-    const quarterId = await quarterIdForDate(start);
-    if (!quarterId) continue;
-
-    await prisma.scorecardEntry.upsert({
-      where: { metricId_periodStart: { metricId: metric.id, periodStart: start } },
-      update: {
-        actualValue: v.valor,
-        actualDisplay: v.display,
-        expectedValue: metric.targetNumeric,
-        status: calculateStatus(v.valor, metric.targetNumeric, metric.targetDirection),
-        notes: `Slack check-in ${new Date().toISOString().split("T")[0]}`,
-        enteredById: session.userId,
-      },
-      create: {
-        metricId: metric.id,
-        quarterId,
-        periodStart: start,
-        periodEnd: end,
-        actualValue: v.valor,
-        actualDisplay: v.display,
-        expectedValue: metric.targetNumeric,
-        status: calculateStatus(v.valor, metric.targetNumeric, metric.targetDirection),
-        notes: `Slack check-in ${new Date().toISOString().split("T")[0]}`,
-        enteredById: session.userId,
-      },
-    });
+    // Mismo upsert de siempre (período vigente, estado calculado); sin trimestre no se escribe.
+    if (!(await saveManualEntry(metric, v.valor, v.display, session.userId))) continue;
     savedNames.push(metric.name);
     savedLabels.push(metric.name);
   }

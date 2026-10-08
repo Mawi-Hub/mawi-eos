@@ -16,6 +16,62 @@ import { PreReadChecklist } from "./preread-checklist";
 import { DeleteIssueButton } from "./delete-issue-button";
 import { PhaseStepper } from "./phase-stepper";
 import { canManageMeetings } from "@/lib/l10Permissions";
+import { crMonthStart } from "@/lib/time/costaRica";
+import { getMetricScope } from "@/lib/selection/quarterSelection";
+import {
+  NO_SELECTION_LABEL,
+  chronicThreshold,
+  frequencyFor,
+  isLegacyWithoutSelection,
+  metricInScope,
+  metricLinkOptions,
+  periodsInRedTitle,
+  periodsLabel,
+  redStreak,
+  updatedForPeriod,
+} from "@/lib/l10/scope";
+import { lastDateChange, originalDueOf, dayKey } from "@/lib/l10/commitments";
+
+// Fecha corta de un acuerdo guardado a medianoche UTC (sin correrla de día).
+function shortDay(d: Date) {
+  return d.toLocaleDateString("es", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+// Detalle de un acuerdo: propuesto, estado pendiente, próximo paso y, si la
+// fecha se movió, la original con el motivo del último cambio.
+function CommitmentMeta({
+  c,
+}: {
+  c: { accepted: boolean; status: string; nextStep: string | null; shareable: boolean; dueDate: Date; originalDueDate: Date | null; dateChanges: unknown };
+}) {
+  const original = originalDueOf(c);
+  const moved = dayKey(original) !== dayKey(c.dueDate);
+  const last = lastDateChange(c.dateChanges);
+  return (
+    <>
+      {!c.accepted && (
+        <span className="ml-2 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title="Propuesto: aún no aceptado por el responsable">
+          propuesto
+        </span>
+      )}
+      {c.status === "pending" && (
+        <span className="ml-2 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">pendiente</span>
+      )}
+      {c.shareable && (
+        <span className="ml-2 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800" title="La empresa ve el texto de este acuerdo">
+          compartido
+        </span>
+      )}
+      {moved && (
+        <div className="text-[11px] text-gray-400">
+          Fecha original {shortDay(original)}
+          {last?.reason ? ` · movida: ${last.reason}` : ""}
+        </div>
+      )}
+      {c.nextStep && <div className="text-[11px] text-gray-500">Próximo paso: {c.nextStep}</div>}
+    </>
+  );
+}
 
 export default async function L10Page() {
   const session = await auth();
@@ -24,6 +80,11 @@ export default async function L10Page() {
   if (!activeQuarter) {
     return <div className="py-12 text-center text-gray-500">No hay trimestre activo.</div>;
   }
+
+  // Con la selección activa el trimestre decide qué métricas entran al tablero;
+  // en modo legado el alcance es "todo lo activo", como siempre.
+  const scope = await getMetricScope(activeQuarter.id);
+  const noSelection = isLegacyWithoutSelection(scope);
 
   // Fan out the independent reads in parallel so we hold fewer connections overall
   const [meeting, pastMeetings, allMetrics, allActiveRocks, users] = await Promise.all([
@@ -54,7 +115,7 @@ export default async function L10Page() {
       },
     }),
     prisma.scorecardMetric.findMany({
-      where: { isActive: true },
+      where: scope.mode === "selection" ? { id: { in: [...scope.metricIds] } } : { isActive: true },
       include: { owner: true, entries: { orderBy: { periodStart: "desc" }, take: 5 } },
       orderBy: [{ owner: { name: "asc" } }, { sortOrder: "asc" }],
     }),
@@ -75,17 +136,15 @@ export default async function L10Page() {
   // Cycle = current ISO week in Costa Rica (Mon 00:00 → Sun 23:59 CR)
   const cycleStart = getCurrentWeekStartCR();
 
-  // "Weeks red" streak per metric: count leading entries that are off_track/riesgo
+  // Racha en rojo por métrica, contada en períodos de SU frecuencia (semanas,
+  // quincenas o meses); nunca se llama "semanas" a una observación mensual.
   const redStreakByMetric = new Map<string, number>();
-  for (const m of redMetrics) {
-    let streak = 0;
-    for (const e of m.entries) {
-      if (e.status === "off_track" || e.status === "riesgo") streak++;
-      else break;
-    }
-    redStreakByMetric.set(m.id, streak);
-  }
-  const CHRONIC_RED_THRESHOLD = 4;
+  for (const m of redMetrics) redStreakByMetric.set(m.id, redStreak(m.entries));
+  // Fecha de corte del período vigente para métricas manuales. En modo legado
+  // todo se mide por semana, como antes.
+  const monthStart = crMonthStart(new Date());
+  const checkFrequency = (m: { id: string; frequency: string }) =>
+    scope.mode === "selection" ? frequencyFor(scope, m.id, m.frequency) : ("weekly" as const);
 
   // Second wave: queries that depend on meeting/cycleStart. Parallel again.
   const [recentWins, preReadReads, openCommitments] = await Promise.all([
@@ -147,7 +206,7 @@ export default async function L10Page() {
     ownerName: string;
     statusBadge: { label: string; className: string };
     linkedIssues: Array<{ id: string; title: string }>;
-    chronicWeeks: number | null;
+    chronic: { label: string; title: string } | null;
     needsIds: boolean;
     actual: string;
     target: string;
@@ -167,6 +226,7 @@ export default async function L10Page() {
     const entry = m.entries[0];
     const status = entry?.status || "pending";
     const streak = redStreakByMetric.get(m.id) || 0;
+    const freq = frequencyFor(scope, m.id, m.frequency);
     const unit = m.unit === "%" || m.unit === "$" ? m.unit : "";
     const actual =
       entry?.actualDisplay ??
@@ -187,7 +247,10 @@ export default async function L10Page() {
       ownerName: m.owner.name,
       statusBadge: STATUS_CONFIG[status],
       linkedIssues: issuesByMetric.get(m.id) || [],
-      chronicWeeks: streak >= CHRONIC_RED_THRESHOLD ? streak : null,
+      chronic:
+        streak >= chronicThreshold(freq, scope)
+          ? { label: `${periodsLabel(freq, streak)} en rojo`, title: periodsInRedTitle(freq) }
+          : null,
       needsIds: isRed(status),
       actual,
       target: expected,
@@ -203,7 +266,7 @@ export default async function L10Page() {
       ownerName: r.owner.name,
       statusBadge: STATUS_CONFIG[r.status],
       linkedIssues: issuesByRock.get(r.id) || [],
-      chronicWeeks: null,
+      chronic: null,
       needsIds: isRed(r.status),
       actual: `${r.progress}%`,
       target: "100%",
@@ -228,9 +291,7 @@ export default async function L10Page() {
   const rockOptions = session?.user?.id
     ? allActiveRocks.filter((r) => r.ownerId === session.user!.id).map((r) => ({ id: r.id, title: r.title }))
     : [];
-  const metricOptions = session?.user?.id
-    ? allMetrics.filter((m) => m.ownerId === session.user!.id).map((m) => ({ id: m.id, name: m.name }))
-    : [];
+  const metricOptions = metricLinkOptions(allMetrics, session?.user?.id, scope).map((m) => ({ id: m.id, name: m.name }));
 
   // How many issues current user has already raised in this meeting
   const userIssueCount = meeting && session?.user?.id
@@ -263,10 +324,9 @@ export default async function L10Page() {
     if (!hasWin) return false;
 
     const userManualMetrics = allMetrics.filter((m) => m.ownerId === userId && m.dataSource === "manual");
-    const userMetricsOk = userManualMetrics.every((m) => {
-      const last = m.entries[0];
-      return last && new Date(last.periodStart) >= cycleStart;
-    });
+    const userMetricsOk = userManualMetrics.every((m) =>
+      updatedForPeriod(checkFrequency(m), m.entries[0]?.periodStart, { weekStart: cycleStart, monthStart }),
+    );
     if (!userMetricsOk) return false;
 
     const userRocks = allActiveRocks.filter((r) => r.ownerId === userId);
@@ -296,10 +356,9 @@ export default async function L10Page() {
     const myWins = recentWins.filter((w) => w.userId === currentUserId);
     // Only manual metrics need human updates; autocalculated ones (chartmogul, hubspot, posthog) sync on their own
     const myManualMetrics = allMetrics.filter((m) => m.ownerId === currentUserId && m.dataSource === "manual");
-    const myMetricsUpdated = myManualMetrics.filter((m) => {
-      const last = m.entries[0];
-      return last && new Date(last.periodStart) >= cycleStart;
-    }).length;
+    const myMetricsUpdated = myManualMetrics.filter((m) =>
+      updatedForPeriod(checkFrequency(m), m.entries[0]?.periodStart, { weekStart: cycleStart, monthStart }),
+    ).length;
     const myRocks = allActiveRocks.filter((r) => r.ownerId === currentUserId);
     const myRocksReviewed = myRocks.filter((r) => new Date(r.updatedAt) >= cycleStart).length;
     const myIssueCount = meeting.issues.filter((i) => i.raisedById === currentUserId).length;
@@ -433,14 +492,15 @@ export default async function L10Page() {
                   const isMine = c.ownerId === currentUserId;
                   return (
                     <div key={c.id} className="flex items-center gap-3 py-2.5">
-                      {(isMine || isCeo) ? (
-                        <ToggleCommitmentButton commitmentId={c.id} done={c.done} />
+                      {(isMine || isCeo || canManage) ? (
+                        <ToggleCommitmentButton commitmentId={c.id} done={c.done} pending={c.status === "pending"} />
                       ) : (
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-gray-200" />
                       )}
                       <div className="flex-1">
                         <span className="text-sm text-gray-900">{c.action}</span>
                         <span className="ml-2 text-xs font-medium text-mawi-600">{c.owner.name}</span>
+                        <CommitmentMeta c={c} />
                       </div>
                       <span className={`text-xs ${isOverdue ? "font-medium text-red-700" : "text-gray-500"}`}>
                         {isOverdue ? "Vencido " : "Vence "}
@@ -511,8 +571,13 @@ export default async function L10Page() {
               </div>
             </div>
             <div className="px-5">
+              {noSelection && (
+                <p className="mt-3 rounded bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  {NO_SELECTION_LABEL}: este trimestre no tiene métricas seleccionadas, así que el tablero de métricas queda vacío. Los IDS ya vinculados siguen abajo.
+                </p>
+              )}
               {coverageRows.length === 0 ? (
-                <p className="py-4 text-sm text-gray-500">No hay métricas ni rocks activos</p>
+                <p className="py-4 text-sm text-gray-500">{noSelection ? "Sin métricas en el tablero; solo rocks" : "No hay métricas ni rocks activos"}</p>
               ) : (
                 <div className="divide-y divide-gray-50">
                   {coverageRows.map((row) =>
@@ -527,9 +592,9 @@ export default async function L10Page() {
                             {row.statusBadge.label}
                           </span>
                           <span className="text-[10px] text-mawi-700">{row.ownerName}</span>
-                          {row.chronicWeeks && (
-                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white" title="Métrica en rojo varias semanas seguidas">
-                              ⚠ {row.chronicWeeks} sem en rojo
+                          {row.chronic && (
+                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white" title={row.chronic.title}>
+                              ⚠ {row.chronic.label}
                             </span>
                           )}
                         </div>
@@ -612,7 +677,7 @@ export default async function L10Page() {
                     const linkLabel = issue.linkedRock
                       ? `Rock · ${issue.linkedRock.title}`
                       : issue.linkedMetric
-                        ? `Métrica · ${issue.linkedMetric.name}`
+                        ? `Métrica · ${issue.linkedMetric.name}${metricInScope(scope, issue.linkedMetric.id) ? "" : " (fuera de la selección actual)"}`
                         : null;
                     return (
                       <div key={issue.id} className={`py-3 ${issue.idsStatus === "resolved" ? "opacity-60" : ""}`}>
@@ -632,6 +697,11 @@ export default async function L10Page() {
                           </div>
                         </div>
                         {issue.description && <p className="mt-1 text-xs text-gray-500">{issue.description}</p>}
+                        {issue.shareable && issue.sharedSummary && (
+                          <div className="mt-1 rounded bg-sky-50 px-2 py-1 text-xs text-sky-900">
+                            <span className="font-medium">Lo que verá la empresa:</span> {issue.sharedSummary}
+                          </div>
+                        )}
                         <div className="mt-1 flex items-center justify-between text-xs text-gray-400">
                           <div>
                             Planteado por {issue.raisedBy.name}
@@ -645,6 +715,8 @@ export default async function L10Page() {
                                 currentTitle={issue.title}
                                 currentDescription={issue.description || ""}
                                 currentPriority={issue.priority}
+                                currentShareable={issue.shareable}
+                                currentSharedSummary={issue.sharedSummary || ""}
                               />
                               <span className="text-gray-300">·</span>
                               <DeleteIssueButton issueId={issue.id} />
@@ -687,20 +759,31 @@ export default async function L10Page() {
               ) : (
                 meeting.commitments.map((c) => (
                   <div key={c.id} className="flex items-center gap-3 py-3">
-                    <ToggleCommitmentButton commitmentId={c.id} done={c.done} />
-                    <div className={c.done ? "flex-1 line-through opacity-50" : "flex-1"}>
-                      <span className="text-sm text-gray-900">{c.action}</span>
-                      <span className="ml-2 text-xs font-medium text-mawi-600">{c.owner.name}</span>
-                      <span className="ml-1 text-xs text-gray-400">
-                        — {new Date(c.dueDate).toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" })}
-                      </span>
+                    {(c.ownerId === currentUserId || isCeo || canManage) ? (
+                      <ToggleCommitmentButton commitmentId={c.id} done={c.done} pending={c.status === "pending"} />
+                    ) : (
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-gray-200" />
+                    )}
+                    <div className="flex-1">
+                      <div className={c.done ? "line-through opacity-50" : ""}>
+                        <span className="text-sm text-gray-900">{c.action}</span>
+                        <span className="ml-2 text-xs font-medium text-mawi-600">{c.owner.name}</span>
+                        <span className="ml-1 text-xs text-gray-400">
+                          — {new Date(c.dueDate).toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })}
+                        </span>
+                      </div>
+                      <CommitmentMeta c={c} />
                     </div>
-                    {(c.ownerId === session?.user?.id || session?.user?.role === "ceo") && (
+                    {(c.ownerId === currentUserId || isCeo || canManage) && (
                       <EditCommitmentButton
                         commitmentId={c.id}
                         currentAction={c.action}
                         currentOwnerId={c.ownerId}
                         currentDueDate={new Date(c.dueDate).toISOString().split("T")[0]}
+                        currentStatus={c.status}
+                        currentNextStep={c.nextStep || ""}
+                        currentAccepted={c.accepted}
+                        currentShareable={c.shareable}
                         users={users}
                       />
                     )}
@@ -825,8 +908,9 @@ export default async function L10Page() {
                       <div className="space-y-1">
                         {pm.commitments.map((c) => (
                           <div key={c.id} className="flex items-center gap-2 text-xs">
-                            <span className={`h-2 w-2 rounded-full ${c.done ? "bg-emerald-500" : "bg-gray-300"}`} />
+                            <span className={`h-2 w-2 rounded-full ${c.done ? "bg-emerald-500" : c.status === "pending" ? "bg-amber-400" : "bg-gray-300"}`} />
                             <span className={c.done ? "text-gray-500 line-through" : "text-gray-900"}>{c.action}</span>
+                            {!c.accepted && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">propuesto</span>}
                             <span className="text-mawi-600 font-medium">· {c.owner.name}</span>
                             <span className="text-gray-400">· {new Date(c.dueDate).toLocaleDateString("es", { day: "numeric", month: "short" })}</span>
                           </div>

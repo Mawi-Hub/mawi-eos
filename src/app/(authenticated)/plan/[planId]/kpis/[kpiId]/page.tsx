@@ -12,6 +12,11 @@ import {
   type KPIDirection,
 } from "@/lib/plan/calculations";
 import { PlanEntryForm } from "./entry-form";
+import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
+import { isSelectionEnabled } from "@/lib/report/config";
+import { getQuarterSelection } from "@/lib/selection/quarterSelection";
+import { resolveQuarter } from "@/lib/plan/quarterPick";
+import { kpiInSelection } from "@/lib/plan/selectionMembership";
 
 export default async function PlanKPIDetailPage({
   params,
@@ -32,11 +37,25 @@ export default async function PlanKPIDetailPage({
   if (!kpi || kpi.planId !== planId) notFound();
 
   const direction = kpi.direction as KPIDirection;
-  const normalized = kpi.entries.map((e) => ({
-    period: e.period,
-    projected: e.projected,
-    actual: e.actual,
-  }));
+  // Mismo valor efectivo que la portada y el catálogo (helper compartido).
+  const [effective] = await overlayScorecardActuals([
+    {
+      sourceType: kpi.sourceType as string,
+      sourceKey: kpi.sourceKey,
+      scorecardMetricId: kpi.scorecardMetricId,
+      unit: kpi.unit,
+      entries: kpi.entries.map((e) => ({ period: e.period, projected: e.projected, actual: e.actual })),
+    },
+  ]);
+  const normalized = effective.entries as { period: Date; projected: number; actual: number | null }[];
+
+  let outOfQuarter = false;
+  if (isSelectionEnabled()) {
+    const plan = await prisma.plan.findUnique({ where: { id: planId }, include: { quarters: true } });
+    const quarter = plan ? resolveQuarter(plan.quarters, undefined) : null;
+    const selection = quarter ? await getQuarterSelection(quarter.id) : null;
+    outOfQuarter = !selection?.hasSelection || !kpiInSelection(kpi, selection.rows);
+  }
   const last = lastRealEntry(normalized);
   const currentValue = last?.actual ?? null;
   const dynamic = getDynamicProjection(normalized, kpi.target, direction);
@@ -46,6 +65,12 @@ export default async function PlanKPIDetailPage({
 
   return (
     <div className="space-y-6">
+      {outOfQuarter && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-600">
+          Fuera del trimestre actual: este KPI sigue en el catálogo con su histórico, pero no está en la selección del
+          trimestre.
+        </div>
+      )}
       <div className="rounded-xl border border-gray-200 bg-white p-6">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -117,7 +142,9 @@ export default async function PlanKPIDetailPage({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {kpi.entries.map((e) => {
+            {kpi.entries.map((raw, i) => {
+              const e = { ...raw, actual: normalized[i].actual };
+              const fromScorecard = normalized[i].actual !== raw.actual;
               const status = getKPIStatus(e.actual, e.projected, direction);
               const delta =
                 e.actual !== null
@@ -138,6 +165,7 @@ export default async function PlanKPIDetailPage({
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-medium text-gray-900">
                     {formatKPIValueFull(e.actual, kpi.unit)}
+                    {fromScorecard && <span className="ml-1 text-[10px] font-normal text-gray-400">Scorecard</span>}
                   </td>
                   <td
                     className={`px-4 py-3 text-right text-sm ${
@@ -164,7 +192,7 @@ export default async function PlanKPIDetailPage({
             planId={planId}
             kpiId={kpi.id}
             unit={kpi.unit}
-            entries={kpi.entries.map((e) => ({
+            entries={normalized.map((e) => ({
               period: e.period.toISOString(),
               projected: e.projected,
               actual: e.actual,

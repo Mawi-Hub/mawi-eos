@@ -1,0 +1,77 @@
+{
+  "_comment": "Borrador del reporte de management para Q4 2026. TODO lo marcado como pending es una PROPUESTA, no un acuerdo adoptado. Editá este archivo y volvé a correr: npx tsx scripts/apply-report-config.ts config/management-report.q4-2026.json (simulación) y con --apply para escribir. Nunca contiene secretos.",
+  "quarter": { "year": 2026, "quarter": 4, "objective": null },
+  "plan": { "name": "H2 2026" },
+  "areas": [
+    { "key": "ventas", "name": "Ventas", "leaderEmail": "lorena@mawi.io", "alternateEmail": null, "sortOrder": 1 },
+    { "key": "growth", "name": "Growth", "leaderEmail": "fede@mawi.io", "alternateEmail": null, "sortOrder": 2 },
+    { "key": "customer", "name": "Customer", "leaderEmail": "gaby@mawi.io", "alternateEmail": null, "sortOrder": 3 },
+    { "key": "producto", "name": "Producto", "leaderEmail": "glori@mawi.io", "alternateEmail": null, "sortOrder": 4 },
+    { "key": "ingenieria", "name": "Ingeniería", "leaderEmail": "adrian@mawi.io", "alternateEmail": null, "sortOrder": 5 }
+  ],
+  "members": [],
+  "principalRocks": {
+    "ventas": null,
+    "growth": null,
+    "customer": null,
+    "producto": null,
+    "ingenieria": null
+  },
+  "proposedRocks": {
+    "ventas": "Implementar y validar un proceso comercial repetible que mejore la asistencia a demos y el cierre, sin depender del founder en cada oportunidad.",
+    "growth": "Ejecutar y evaluar los experimentos de adquisición priorizados y decidir cuáles escalar, ajustar o descartar con evidencia. (Propuesta por confirmar con Fede)",
+    "customer": "Implementar y validar un proceso de onboarding que lleve al cliente a completar un primer flujo real en Mawi y convierta las fricciones en mejoras de producto.",
+    "producto": "Eliminar las fricciones prioritarias del primer flujo real del cliente y validarlas con Onboarding. (Propuesta por confirmar con Producto)",
+    "ingenieria": "Estandarizar y validar un flujo asistido por IA que investigue bugs, proponga soluciones con pruebas y permita revisarlas rápido."
+  },
+  "selections": [
+    {
+      "areaKey": "ventas", "order": 1, "label": "Show rate",
+      "ref": { "scorecardMetricName": "Show Rate" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "HubSpot", "numerator": "demos realizadas", "denominator": "demos programadas para ocurrir en el período (cancelación/reprogramación: definición por acordar)", "formulaVersion": "draft-1", "targetConfirmed": false, "reference": "65% (propuesta comercial; por confirmar)" }
+    },
+    {
+      "areaKey": "ventas", "order": 2, "label": "Porcentaje de cierre",
+      "ref": { "scorecardMetricName": "Close Rate" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "HubSpot", "numerator": "ventas ganadas del mes", "denominator": "demos realizadas del mes (cálculo operativo mensual, NO conversión de cohorte)", "formulaVersion": "draft-1", "targetConfirmed": false, "reference": "25% (propuesta comercial; por confirmar)" }
+    },
+    {
+      "areaKey": "growth", "order": 1, "label": "Leads calificados nuevos originados por Marketing",
+      "ref": { "proposalKey": "growth_new_qualified_leads" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "count", "frequency": "monthly", "direction": "above", "source": "HubSpot o captura manual validada (por definir)", "numerator": "leads distintos cuya primera aceptación por Ventas ocurrió en el período", "denominator": null, "formulaVersion": "draft-1", "targetConfirmed": false, "notes": "Guardar lead_id, fuente, first_accepted_at y responsable. Criterios ICP/necesidad/momento por acordar." }
+    },
+    {
+      "areaKey": "customer", "order": 1, "label": "Soporte: tiempo promedio de resolución",
+      "ref": { "proposalKey": "customer_support_avg_resolution" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "hours", "frequency": "monthly", "direction": "below", "source": "Help Scout (definición nativa; ingreso manual con evidencia si el conector no es fiable)", "formulaVersion": "draft-1", "targetConfirmed": false }
+    },
+    {
+      "areaKey": "customer", "order": 2, "label": "Onboarding: cuentas que alcanzan el primer resultado real en 30 días",
+      "ref": { "proposalKey": "customer_onboarding_first_result" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "por definir con Gaby y Producto", "numerator": "cuentas que lograron el flujo dentro de la ventana", "denominator": "cuentas pagadas cuya ventana (30 días desde el primer pago, propuesta) ya terminó al corte", "formulaVersion": "draft-1", "targetConfirmed": false, "notes": "Las cohortes inmaduras se muestran aparte. No activar hasta definir el flujo real y su evidencia." }
+    },
+    {
+      "areaKey": "customer", "order": 3, "label": "Success: cuentas existentes con upsell pagado en el mes",
+      "ref": { "proposalKey": "customer_success_upsell_accounts" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "count", "frequency": "monthly", "direction": "above", "source": "por definir", "numerator": "cuentas distintas (existentes al inicio del mes) con upsell pagado", "denominator": null, "formulaVersion": "draft-1", "targetConfirmed": false, "notes": "Una cuenta cuenta una vez. Excluir pruebas, propuestas y renovaciones sin aumento." }
+    },
+    {
+      "areaKey": "producto", "order": 1, "label": "Fricciones eliminadas y validadas en uso real",
+      "ref": { "proposalKey": "producto_validated_frictions" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "count", "frequency": "monthly", "direction": "above", "source": "lista priorizada de fricciones (por definir)", "numerator": "fricciones eliminadas y validadas por Onboarding con fecha", "denominator": null, "formulaVersion": "draft-1", "targetConfirmed": false, "notes": "Propuesta por confirmar con Producto. No cuenta al proponer, cerrar ticket o fusionar PR." }
+    },
+    {
+      "areaKey": "ingenieria", "order": 1, "label": "Propuestas de IA aceptadas en la primera revisión",
+      "ref": { "proposalKey": "ingenieria_ai_first_review_acceptance" },
+      "approvalStatus": "pending",
+      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "seguimiento del piloto (por definir)", "numerator": "propuestas aceptadas en la primera revisión humana, con pruebas y sin retrabajo sustancial", "denominator": "todas las propuestas que llegaron a primera revisión", "formulaVersion": "draft-1", "targetConfirmed": false, "notes": "Mostrar n/N, pendientes y casos elegibles sin propuesta. Definir 'retrabajo sustancial' y tipos de bug elegibles." }
+    }
+  ]
+}

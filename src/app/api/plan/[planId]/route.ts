@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
 
 export async function GET(
   _request: Request,
@@ -38,5 +39,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(plan);
+  // Mismo valor efectivo que la portada y el detalle; no modifica lo guardado.
+  const kpis = await overlayScorecardActuals(plan.kpis);
+  return NextResponse.json({ ...plan, kpis });
 }

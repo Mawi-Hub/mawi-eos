@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateWeeklyDigest } from "@/lib/integrations/checkin";
+import { requireCronAuth } from "@/lib/cronAuth";
+import { isMondayDigestReplaced } from "@/lib/report/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,13 +12,17 @@ export const maxDuration = 60;
 // CRON_SECRET env var is set — we require it so the endpoint isn't public.
 // `?dryRun=1` previews the same summary without sending a Slack message.
 export async function GET(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const dryRun = new URL(request.url).searchParams.get("dryRun") === "1";
+    // Cuando el resumen de management (al cerrar el L10) sustituye este emisor,
+    // solo se apaga este job; el L10 privado no se toca.
+    if (isMondayDigestReplaced() && !dryRun) {
+      console.log("[checkin] Resumen del lunes reemplazado por el reporte de management; no se envía.");
+      return NextResponse.json({ ok: true, skipped: "replaced_by_management_report" });
+    }
     const result = await generateWeeklyDigest({ dryRun });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

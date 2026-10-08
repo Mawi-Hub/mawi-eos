@@ -9,17 +9,28 @@ import type { KPIDirection } from "@/lib/plan/calculations";
 import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
 import { PlanSyncButton } from "./sync-button";
 import { PlanShareButton } from "./share-button";
+import { isSelectionEnabled } from "@/lib/report/config";
+import { SelectionOverview } from "./selection-overview";
 
 const AREAS = ["COMERCIAL", "CUSTOMER_SUCCESS", "PRODUCTO", "INGENIERIA"] as const;
 type AreaKey = (typeof AREAS)[number];
 
 export default async function PlanOverviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ planId: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { planId } = await params;
   const session = await auth();
+
+  // Con la selección encendida la portada sale del resolvedor trimestral;
+  // apagada, todo sigue como antes.
+  if (isSelectionEnabled()) {
+    const sp = await searchParams;
+    return <SelectionOverview planId={planId} requestedQuarter={sp.q} isCeo={session?.user.role === "ceo"} />;
+  }
 
   const plan = await prisma.plan.findUnique({
     where: { id: planId },
@@ -53,6 +64,7 @@ export default async function PlanOverviewPage({
     isPrincipal: k.isPrincipal,
     sourceType: k.sourceType as string,
     sourceKey: k.sourceKey as string | null,
+    scorecardMetricId: k.scorecardMetricId,
     owner: k.owner,
     entries: k.entries.map((e) => ({
       period: e.period,

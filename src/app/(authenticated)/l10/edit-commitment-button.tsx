@@ -10,20 +10,32 @@ export default function EditCommitmentButton({
   currentAction,
   currentOwnerId,
   currentDueDate,
+  currentStatus = "open",
+  currentNextStep = "",
+  currentAccepted = true,
+  currentShareable = false,
   users,
 }: {
   commitmentId: string;
   currentAction: string;
   currentOwnerId: string;
   currentDueDate: string;
+  currentStatus?: string;
+  currentNextStep?: string;
+  currentAccepted?: boolean;
+  currentShareable?: boolean;
   users: User[];
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dueDate, setDueDate] = useState(currentDueDate);
+  const dateMoved = dueDate !== currentDueDate;
   const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError(null);
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     const res = await fetch("/api/l10/commitments", {
@@ -34,9 +46,21 @@ export default function EditCommitmentButton({
         action: fd.get("action"),
         ownerId: fd.get("ownerId"),
         dueDate: fd.get("dueDate"),
+        // Solo viaja el motivo si la fecha cambió; el servidor lo exige.
+        dateChangeReason: dateMoved ? fd.get("dateChangeReason") : undefined,
+        status: fd.get("status"),
+        nextStep: fd.get("nextStep") || null,
+        accepted: fd.get("proposed") !== "on",
+        shareable: fd.get("shareable") === "on",
       }),
     });
-    if (res.ok) { setOpen(false); router.refresh(); }
+    if (res.ok) {
+      setOpen(false);
+      router.refresh();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error || "No se pudo guardar el compromiso");
+    }
     setLoading(false);
   }
 
@@ -78,9 +102,43 @@ export default function EditCommitmentButton({
             </div>
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700">Para cuándo</label>
-              <input name="dueDate" type="date" required defaultValue={currentDueDate} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" />
+              <input name="dueDate" type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" />
             </div>
           </div>
+          {dateMoved && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Motivo del cambio de fecha</label>
+              <input name="dateChangeReason" required maxLength={300} placeholder="Por qué se mueve (queda en el historial)" className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" />
+            </div>
+          )}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700">Estado</label>
+              <select name="status" defaultValue={currentStatus} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600">
+                <option value="open">Abierto</option>
+                <option value="pending">Pendiente (sigue abierto, con motivo)</option>
+                <option value="done">Hecho</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Próximo paso</label>
+            <input name="nextStep" maxLength={300} defaultValue={currentNextStep} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" />
+          </div>
+          <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+            <label className="flex items-start gap-2">
+              <input type="checkbox" name="proposed" defaultChecked={!currentAccepted} className="mt-0.5" />
+              Propuesto: aún no aceptado por el responsable
+            </label>
+            <label className="flex items-start gap-2">
+              <input type="checkbox" name="shareable" defaultChecked={currentShareable} className="mt-0.5" />
+              <span>
+                Compartir con la empresa
+                <span className="block text-[11px] text-gray-500">La empresa verá el texto de la acción tal cual. Nada sensible.</span>
+              </span>
+            </label>
+          </div>
+          {error && <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={loading} className="flex-1 rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50">
               {loading ? "..." : "Guardar"}

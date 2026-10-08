@@ -106,13 +106,16 @@ export function EditRoleForm({ role }: { role: AccountabilityRoleData }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Métricas clave (una por línea)</label>
+            <label className="block text-sm font-medium text-gray-700">Métricas clave (una por línea, texto libre)</label>
             <textarea
               value={keyMetrics}
               onChange={(e) => setKeyMetrics(e.target.value)}
               rows={4}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-mawi-500 focus:outline-none focus:ring-1 focus:ring-mawi-500"
             />
+            <p className="mt-1 text-[11px] text-gray-500">
+              Es solo descripción del rol. Las métricas oficiales vienen de la selección del trimestre y del área que lidera la persona.
+            </p>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
