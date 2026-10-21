@@ -5,6 +5,7 @@ import Link from "next/link";
 import { isSelectionEnabled } from "@/lib/report/config";
 import { getQuarterSelection } from "@/lib/selection/quarterSelection";
 import { Shield, CheckCircle, AlertTriangle, BarChart3 } from "lucide-react";
+import { quarterOverview, rockStatus } from "@/lib/company/areas";
 
 export default async function AccountabilityChartPage() {
   const session = await auth();
@@ -36,15 +37,68 @@ export default async function AccountabilityChartPage() {
     }
   }
   const quarterLabel = activeQuarter ? `Q${activeQuarter.quarter} ${activeQuarter.year}` : "";
+  const overview = await quarterOverview();
+  const overviewQuarter = overview.quarter ? `Q${overview.quarter.quarter} ${overview.quarter.year}` : "";
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Accountability Chart</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Equipo y roles</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Responsabilidades, autonomía y métricas de cada rol
+          Quién está en cada área, el Rock del área en {overviewQuarter || "el trimestre"} y las responsabilidades de cada líder.
         </p>
       </div>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-gray-900">Personas por área</h2>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {overview.areas.map((area) => {
+            const rock = area.principalRock;
+            const st = rock ? rockStatus(rock.status) : null;
+            return (
+              <div key={area.id} className="min-w-0 rounded-xl border border-gray-200 bg-white p-5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="font-semibold text-gray-900">{area.name}</h3>
+                  {area.leader && <span className="text-xs text-gray-500">Líder: {area.leader.name}</span>}
+                </div>
+                <div className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
+                  {rock ? (
+                    <div className="flex items-start gap-2">
+                      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${st!.dot}`} aria-hidden="true" />
+                      <div>
+                        <div className="text-gray-900">{rock.title}</div>
+                        <div className="text-xs text-gray-500">
+                          Rock del área · {st!.label}
+                          {area.rocks.length > 1 ? ` · +${area.rocks.length - 1} Rock${area.rocks.length > 2 ? "s" : ""} más` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-gray-500">Rock del área por definir</span>
+                  )}
+                </div>
+                {area.people.length ? (
+                  <ul className="mt-3 divide-y divide-gray-100 text-sm">
+                    {area.people.map((p) => (
+                      <li key={p.id} className="flex items-center justify-between py-1.5">
+                        <span className="text-gray-800">
+                          {p.name}
+                          {p.isLeader && <span className="ml-2 rounded-full bg-mawi-50 px-1.5 py-0.5 text-[10px] font-medium text-mawi-700">líder</span>}
+                        </span>
+                        <span className="text-xs text-gray-400">{p.teamName}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-xs text-gray-400">Todavía no hay personas cargadas en esta área.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <h2 className="text-lg font-semibold text-gray-900">Roles de liderazgo</h2>
 
       {roles.length === 0 ? (
         <div className="text-center py-12">
@@ -76,7 +130,7 @@ export default async function AccountabilityChartPage() {
                 )}
               </div>
 
-              <div className="grid gap-0 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-0 md:grid-cols-2">
                 {/* Responsabilidades */}
                 <div className="p-5 border-b md:border-b-0 md:border-r border-gray-100">
                   <div className="flex items-center gap-2 mb-3">

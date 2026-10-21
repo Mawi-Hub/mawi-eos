@@ -17,6 +17,10 @@ type Selection = {
   metric?: string; // nombre exacto de una ScorecardMetric existente
   proposal?: string; // clave de una métrica sin fuente todavía
   setMetric?: { dataSource?: "manual" | "hubspot" | "chartmogul" | "posthog" };
+  // Crea la métrica si no existe (p. ej. una calculada por el sync de ChartMogul).
+  createMetric?: { unit: string; frequency: string; dataSource: string; targetNumeric?: number; targetValue?: string; targetDirection?: string; ownerEmail: string; category: string };
+  // Propuesta que esta métrica reemplaza: se convierte esa fila en vez de crear otra.
+  replacesProposal?: string;
   definition: Record<string, unknown>;
 };
 
@@ -56,7 +60,33 @@ async function main() {
 
     let metricId: string | null = null;
     if (s.metric) {
-      const found = await prisma.scorecardMetric.findMany({ where: { name: s.metric }, select: { id: true, dataSource: true } });
+      let found = await prisma.scorecardMetric.findMany({ where: { name: s.metric }, select: { id: true, dataSource: true } });
+      if (found.length === 0 && s.createMetric) {
+        const owner = await prisma.user.findUnique({ where: { email: s.createMetric.ownerEmail }, select: { id: true } });
+        if (!owner) {
+          problems += 1;
+          console.log(`  ⚠ ${s.label}: no hay usuario ${s.createMetric.ownerEmail} para crear la métrica`);
+          continue;
+        }
+        console.log(`    · crear métrica "${s.metric}" (${s.createMetric.dataSource})`);
+        if (apply) {
+          const m = await prisma.scorecardMetric.create({
+            data: {
+              name: s.metric,
+              category: s.createMetric.category,
+              ownerId: owner.id,
+              frequency: s.createMetric.frequency,
+              unit: s.createMetric.unit,
+              dataSource: s.createMetric.dataSource,
+              targetNumeric: s.createMetric.targetNumeric ?? null,
+              targetValue: s.createMetric.targetValue ?? null,
+              targetDirection: s.createMetric.targetDirection ?? "above",
+            },
+            select: { id: true, dataSource: true },
+          });
+          found = [m];
+        } else found = [{ id: `dry:${s.metric}`, dataSource: s.createMetric.dataSource }];
+      }
       if (found.length !== 1) {
         problems += 1;
         console.log(`  ⚠ ${s.label}: la métrica "${s.metric}" ${found.length ? "es ambigua" : "no existe"}`);
@@ -76,12 +106,14 @@ async function main() {
     }
 
     const approved = !!metricId;
-    const existing = await prisma.quarterMetricSelection.findFirst({
-      where: { quarterId: quarter.id, ...(metricId ? { scorecardMetricId: metricId } : { proposalKey: s.proposal }) },
-    });
-    const keep = existing?.approvalStatus === "approved" && !force;
+    const existing =
+      (await prisma.quarterMetricSelection.findFirst({
+        where: { quarterId: quarter.id, ...(metricId ? { scorecardMetricId: metricId } : { proposalKey: s.proposal }) },
+      })) ??
+      (s.replacesProposal ? await prisma.quarterMetricSelection.findFirst({ where: { quarterId: quarter.id, proposalKey: s.replacesProposal } }) : null);
+    const keep = existing?.approvalStatus === "approved" && !force && !(s.replacesProposal && existing.proposalKey === s.replacesProposal);
     console.log(`  • ${existing ? (keep ? "conservar (ya aprobada)" : "actualizar") : "crear"} ${s.areaKey} · ${s.label} [${approved ? "aprobada" : "pendiente de configurar"}]`);
-    if (!apply || keep) continue;
+    if (!apply || keep || metricId?.startsWith("dry:")) continue;
 
     const data = {
       planId: plan.id,

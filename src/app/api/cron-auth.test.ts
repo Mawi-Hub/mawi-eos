@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-// Los cuatro endpoints de cron rechazan sin Authorization válido y NO tocan la
+// Todos los endpoints de cron rechazan sin Authorization válido y NO tocan la
 // base ni Slack (el guard corre antes de cualquier otra cosa).
 test("los crons fallan cerrado sin CRON_SECRET o con Bearer incorrecto", async () => {
   const prev = process.env.CRON_SECRET;
@@ -9,7 +9,10 @@ test("los crons fallan cerrado sin CRON_SECRET o con Bearer incorrecto", async (
     () => import("./l10/cron/route"),
     () => import("./l10/digest/route"),
     () => import("./checkin/kpi/route"),
-    () => import("./checkin/digest/route"),
+    () => import("./checkin/team/route"),
+    () => import("./checkin/kpi/nudge/route"),
+    () => import("./sync/cron/route"),
+    () => import("./weekly/cron/route"),
   ];
   for (const load of routes) {
     const { GET } = await load();

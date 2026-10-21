@@ -11,9 +11,17 @@ const AREAS = ["COMERCIAL", "CUSTOMER_SUCCESS", "PRODUCTO", "INGENIERIA"] as con
 type AreaKey = (typeof AREAS)[number];
 
 export const metadata = {
-  title: "Plan H2 — Mawi",
-  description: "Plan de crecimiento Segundo Semestre 2026",
+  title: "Plan — Mawi",
+  description: "Plan de crecimiento de Mawi",
+  robots: { index: false, follow: false },
 };
+
+// El link público quedó apagado: solo se protegía con el id del plan, mostraba
+// la versión vieja (sin Rocks ni selección del trimestre) y no se podía
+// revocar. El equipo ahora entra con Google. PUBLIC_PLAN_SHARE=1 lo reactiva.
+function publicShareEnabled(): boolean {
+  return process.env.PUBLIC_PLAN_SHARE?.trim() === "1";
+}
 
 export default async function PublicPlanPage({
   params,
@@ -21,6 +29,7 @@ export default async function PublicPlanPage({
   params: Promise<{ planId: string }>;
 }) {
   const { planId } = await params;
+  if (!publicShareEnabled()) notFound();
 
   const plan = await prisma.plan.findUnique({
     where: { id: planId },

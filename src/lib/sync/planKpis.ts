@@ -165,6 +165,16 @@ export async function runPlanKpiSync(planId: string): Promise<Response> {
     mrrGrowthByMonth.set(periodMs, growthPct);
   }
 
+  // Churn bruto de MRR = (MRR perdido por cancelaciones + reducciones) / MRR
+  // del mes anterior, en %. No descuenta la expansión (eso es el NDR).
+  const grossChurnByMonth = new Map<number, number>();
+  for (const m of mrrBreakdown) {
+    const periodMs = periodFromCMDate(m.date).getTime();
+    const prev = mrrByMonth.get(shiftMonths(new Date(periodMs), -1).getTime());
+    if (!prev || prev.mrr === 0) continue;
+    grossChurnByMonth.set(periodMs, ((Math.abs(m.mrrChurn) + Math.abs(m.mrrContraction)) / prev.mrr) * 100);
+  }
+
   // Net New MRR = newBiz + expansion + reactivation − churn − contraction.
   const netNewMRRByMonth = new Map<number, number>();
   for (const m of mrrBreakdown) {
@@ -213,6 +223,7 @@ export async function runPlanKpiSync(planId: string): Promise<Response> {
       },
     },
     { name: "ARPA", getValue: (ms) => arpaByMonth.get(ms) ?? null },
+    { name: "Churn bruto de MRR", getValue: (ms) => grossChurnByMonth.get(ms) ?? null },
   ];
 
   // Resolve target Scorecard metrics by name + cache Quarter lookup.

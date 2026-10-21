@@ -14,8 +14,7 @@
 | Vie 12:00 | Borrador del resumen semanal + DM a quien facilita | `/api/weekly/cron` |
 | Vie ≤15:00 | Quien facilita revisa en **EOS → Semana** y envía a `#weekly-check-ins` | (manual) |
 
-El resumen de los lunes (`/api/checkin/digest`) ya no está programado: lo
-reemplaza el resumen del viernes. La ruta sigue existiendo para un envío manual.
+El resumen de los lunes se eliminó: lo reemplaza el resumen del viernes.
 
 ## Check-in del equipo (formulario de Slack)
 
@@ -67,8 +66,10 @@ como un segundo mensaje: sus acuerdos ya entran en el resumen semanal.
 - Variables: `WEEKLY_CHANNEL_ID` (canal `#weekly-check-ins`), y las existentes
   (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `CRON_SECRET`, `NOTION_*`,
   `ANTHROPIC_API_KEY`, `REPORT_COMPANY_METRICS` para los números de empresa).
-- Apagar el Workflow de Slack que preguntaba en `#team-checkins` los jueves a
-  las 09:02. Si alguien igual responde ahí, se sigue capturando como antes.
+- Apagar el Workflow de Slack que preguntaba en `#weekly-check-ins`
+  (`CHECKIN_CHANNEL_ID`) los jueves a las 09:02. Si alguien igual responde
+  ahí, se sigue capturando como antes; las respuestas en el hilo del resumen
+  semanal se ignoran.
 
 ---
 
@@ -157,31 +158,9 @@ evidencia ausente se rechazan); si falla, los atajos (números, "listo",
 fallida. El texto de los mensajes es dato: no cambia responsables, metas ni
 canales ni publica nada.
 
-## Resumen de los lunes (ya no programado)
+## Resumen de los lunes
 
-`/api/checkin/digest` ya no está en `vercel.json`; se puede llamar a mano. Resume el lunes–domingo
-anterior y consulta también la semana previa como comparación.
-
-- Participación por personas distintas, sin asumir el tamaño del equipo.
-- Energía calculada por código usando el último valor válido por persona.
-  La comparación usa solo personas con energía en ambas semanas y se muestra
-  cuando hay al menos dos; no mezcla muestras distintas.
-- El mensaje se dirige a toda la empresa: primero todos los bloqueos
-  laborales y pedidos de ayuda, con quién los reportó y qué necesita cuando
-  lo expresó; después los avances y las formas de colaborar. Se agrupan
-  bloqueos relacionados sin perder sus participantes.
-- Las propuestas de la IA se etiquetan como sugerencias; no se inventan
-  responsables, fechas ni compromisos. Se omiten detalles personales,
-  familiares o de salud y puntajes individuales de energía.
-- Retos anteriores solo aportan contexto para detectar temas recurrentes.
-  No se supone que un reto reportado siga abierto el lunes.
-- Si Claude falla, se muestran las estadísticas y todas las personas que
-  compartieron retos, invitando a revisar sus respuestas originales. No se
-  copian campos históricos que pueden mezclar asuntos laborales y personales.
-  La consulta de Notion recorre todas las páginas.
-
-El resumen de management L10 y el check-in privado de KPIs tienen sus propios
-horarios y fuentes de datos.
+Se eliminó (ruta, cron y código): lo reemplaza el resumen semanal del viernes.
 
 ## Verificación y vista previa
 
@@ -192,19 +171,9 @@ node_modules/.bin/tsx --test src/lib/integrations/*.test.ts
 TEST_DATABASE_URL=postgresql://localhost:5432/mawi_eos_dev node_modules/.bin/tsx --test src/lib/integrations/db.test.ts
 npm run test:checkin:unit
 npm run test:checkin
-npm run preview:checkin -- --date 2026-09-14
 ```
 
 La primera prueba usa APIs simuladas y no necesita secretos. La segunda
 prueba la extracción real de Claude con mensajes ficticios; necesita
 `ANTHROPIC_API_KEY` en `.env.local` y no escribe en Notion ni Slack.
-La vista previa lee Notion y usa Claude, pero no publica mensajes ni escribe
-registros. `--date` es la fecha de publicación a simular; para revisar un
-resumen de lunes, usar un lunes. Sin fecha, muestra los siete días completos
-anteriores al día actual en Costa Rica.
-
-También se puede usar `/api/checkin/digest?dryRun=1` con
-`Authorization: Bearer <CRON_SECRET>`. El endpoint requiere que el secreto
-esté configurado, tanto para publicar como para previsualizar.
-
 Los cambios del código entran en vigor al desplegar la aplicación.

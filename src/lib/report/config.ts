@@ -17,12 +17,6 @@ export function isLeaderCheckinV2(): boolean {
   return flag("LEADER_CHECKIN_V2");
 }
 
-// El resumen general del lunes sigue activo hasta que se confirme esta
-// migración. Con la bandera en 1 solo se apaga ese emisor.
-export function isMondayDigestReplaced(): boolean {
-  return flag("REPORT_REPLACE_MONDAY_DIGEST");
-}
-
 export function reportChannel(): string | null {
   const value = process.env.REPORT_CHANNEL_ID?.trim();
   return value ? value : null;

@@ -1,253 +1,179 @@
-import { prisma } from "@/lib/db";
-import { auth } from "@/lib/auth";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { SyncButton } from "./sync-button";
-import { computeNdr, formatRate, type RateDetail } from "@/lib/l10/dashboardFormat";
+import { auth } from "@/lib/auth";
+import { homePathFor } from "@/lib/access";
+import { ceoExceptions } from "@/lib/company/exceptions";
+import { northStars } from "@/lib/company/northStars";
+import { rockStatus } from "@/lib/company/areas";
+import { FinanceSection } from "./finance";
 
-interface MRREntry {
-  date: string;
-  mrr: number;
-  mrrNewBusiness: number;
-  mrrExpansion: number;
-  mrrContraction: number;
-  mrrChurn: number;
-}
+export const dynamic = "force-dynamic";
 
-interface PipelineMetrics {
-  leadsByChannel: Record<string, number>;
-  // null = sin muestra (nunca 0.0%). El detalle n/N puede venir o no.
-  showRate: number | null;
-  closeRate: number | null;
-  showRateDetail?: RateDetail;
-  closeRateDetail?: RateDetail;
-  avgSalesCycleDays: number | null;
-}
+const SIGNAL_DOT = { on_track: "bg-emerald-500", riesgo: "bg-amber-500", off_track: "bg-red-500" } as const;
 
-function KPICard({ label, value, subtitle, color }: { label: string; value: string; subtitle?: string; color: string }) {
+function Card({ title, count, tone, children, href }: { title: string; count: number; tone: "red" | "amber" | "gray"; children: React.ReactNode; href?: string }) {
+  const badge = count === 0 ? "bg-emerald-50 text-emerald-700" : tone === "red" ? "bg-red-50 text-red-700" : tone === "amber" ? "bg-amber-50 text-amber-800" : "bg-gray-100 text-gray-600";
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5">
-      <div className="text-xs font-medium text-gray-500">{label}</div>
-      <div className={`mt-2 text-2xl font-bold ${color}`}>{value}</div>
-      {subtitle && <div className="mt-1 text-xs text-gray-400">{subtitle}</div>}
-    </div>
+    <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold text-gray-900">{title}</h2>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge}`}>{count === 0 ? "Todo bien" : count}</span>
+          {href && <Link href={href} className="text-xs font-medium text-mawi-700 hover:underline">Ver</Link>}
+        </div>
+      </div>
+      <div className="mt-3 text-sm">{children}</div>
+    </section>
   );
 }
 
-function SourceBadge({ source }: { source: string }) {
-  const config: Record<string, string> = {
-    chartmogul: "bg-blue-50 text-blue-700",
-    hubspot: "bg-amber-50 text-amber-700",
-    posthog: "bg-green-50 text-green-700",
-  };
-  return (
-    <span className={`inline-flex rounded px-2 py-0.5 text-[10px] font-medium ${config[source] || "bg-gray-50 text-gray-600"}`}>
-      {source === "chartmogul" ? "ChartMogul" : source === "hubspot" ? "HubSpot" : "PostHog"}
-    </span>
-  );
-}
-
+// Vista CEO: excepciones primero (lo que pide atención antes de la L10), las
+// métricas norte contra el plan y, abajo, las finanzas de ChartMogul y HubSpot.
 export default async function DashboardPage() {
   const session = await auth();
-  if (session?.user?.role !== "ceo") redirect("/scorecard");
+  if (session?.user?.role !== "ceo") redirect(homePathFor(session?.user?.role));
 
-  // Fetch cached data
-  const caches = await prisma.apiSyncCache.findMany();
-  const cache: Record<string, { data: unknown; syncedAt: Date }> = {};
-  for (const c of caches) {
-    cache[`${c.source}:${c.dataKey}`] = { data: c.data, syncedAt: c.syncedAt };
-  }
-
-  const mrrData = (cache["chartmogul:mrr_breakdown"]?.data || []) as MRREntry[];
-  const lastMRR = mrrData[mrrData.length - 1];
-  const prevMRR = mrrData[mrrData.length - 2];
-
-  const ndr = computeNdr(prevMRR, lastMRR);
-
-  const pipelineMetrics = (cache["hubspot:pipeline_metrics"]?.data || null) as PipelineMetrics | null;
-
-  const showRate = formatRate(pipelineMetrics?.showRate, pipelineMetrics?.showRateDetail);
-  const closeRate = formatRate(pipelineMetrics?.closeRate, pipelineMetrics?.closeRateDetail);
-
-  const cmSyncedAt = cache["chartmogul:mrr_breakdown"]?.syncedAt;
-  const hsSyncedAt = cache["hubspot:pipeline_metrics"]?.syncedAt;
-  const phSyncedAt = cache["posthog:engagement_data"]?.syncedAt;
-
-  function formatDate(d: Date | undefined) {
-    if (!d) return "Nunca";
-    return new Date(d).toLocaleString("es", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  }
+  const now = new Date();
+  const [x, stars] = await Promise.all([ceoExceptions(now), northStars(now)]);
+  const pendingPreps = x.preps.filter((p) => p.status !== "confirmed");
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">CEO Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">Vista consolidada de salud del negocio</p>
-        </div>
-        <SyncButton />
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Vista CEO</h1>
+        <p className="mt-1 text-sm text-gray-500">Lo que se desvía esta semana. Lo que está en verde no aparece.</p>
       </div>
 
-      {/* Portada: como máximo los tres resultados de empresa. */}
-      <section>
-        <div className="mb-4 border-l-4 border-gray-900 pl-3">
-          <h2 className="text-sm font-semibold text-gray-700">Resultados de la empresa</h2>
-          <p className="text-xs text-gray-400">NDR, MRR y clientes nuevos</p>
-        </div>
-        <div className="grid grid-cols-3 gap-4">
-          <KPICard
-            label="NDR del mes"
-            value={ndr === null ? "No disponible" : `${ndr.toFixed(1)}%`}
-            subtitle={ndr === null ? "Falta el MRR del mes anterior" : "Calculado del desglose mensual de MRR"}
-            color="text-gray-900"
-          />
-          <KPICard
-            label="MRR Neto"
-            value={lastMRR ? `$${lastMRR.mrr.toLocaleString()}` : "No disponible"}
-            subtitle={lastMRR && prevMRR && prevMRR.mrr > 0 ? `${((lastMRR.mrr - prevMRR.mrr) / prevMRR.mrr * 100).toFixed(1)}% vs mes anterior` : undefined}
-            color="text-gray-900"
-          />
-          <KPICard label="Clientes nuevos" value="No disponible" subtitle="Aún no se sincroniza este dato en el tablero" color="text-gray-400" />
-        </div>
-      </section>
-
-      <details className="rounded-lg border border-gray-200 bg-white">
-        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">Ver diagnóstico</summary>
-        <div className="space-y-8 border-t border-gray-100 p-5">
-      {/* Layer 1: Business Health - ChartMogul */}
-      <section>
-        <div className="mb-4 flex items-center gap-3 border-l-4 border-blue-500 pl-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700">Capa 1 — Salud del negocio</h2>
-            <p className="text-xs text-gray-400">¿Estamos creciendo o muriendo?</p>
-          </div>
-          <SourceBadge source="chartmogul" />
-          <span className="text-[10px] text-gray-400">Sync: {formatDate(cmSyncedAt)}</span>
-        </div>
-
-        {lastMRR ? (
-          <div className="grid grid-cols-4 gap-4">
-            <KPICard
-              label="MRR Neto"
-              value={`$${lastMRR.mrr.toLocaleString()}`}
-              subtitle={prevMRR ? `${((lastMRR.mrr - prevMRR.mrr) / prevMRR.mrr * 100).toFixed(1)}% vs mes anterior` : undefined}
-              color="text-gray-900"
-            />
-            <KPICard
-              label="Churn MRR"
-              value={`$${Math.abs(lastMRR.mrrChurn).toLocaleString()}`}
-              subtitle="MRR perdido por cancelaciones"
-              color="text-red-600"
-            />
-            <KPICard
-              label="Expansion MRR"
-              value={`$${lastMRR.mrrExpansion.toLocaleString()}`}
-              subtitle="Upgrades de clientes existentes"
-              color="text-emerald-600"
-            />
-            <KPICard
-              label="New Business MRR"
-              value={`$${lastMRR.mrrNewBusiness.toLocaleString()}`}
-              subtitle="Clientes nuevos del mes"
-              color="text-blue-600"
-            />
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-            <p className="text-sm text-gray-400">Sin datos de ChartMogul. Haz click en &quot;Sincronizar&quot; para cargar.</p>
-          </div>
-        )}
-      </section>
-
-      {/* Layer 2: Acquisition Signals - HubSpot */}
-      <section>
-        <div className="mb-4 flex items-center gap-3 border-l-4 border-amber-500 pl-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700">Capa 2 — Señales de adquisición</h2>
-            <p className="text-xs text-gray-400">¿El pipeline es sano?</p>
-          </div>
-          <SourceBadge source="hubspot" />
-          <span className="text-[10px] text-gray-400">Sync: {formatDate(hsSyncedAt)}</span>
-        </div>
-
-        {pipelineMetrics ? (
-          <div className="grid grid-cols-4 gap-4">
-            <KPICard
-              label="Leads por canal"
-              value={Object.values(pipelineMetrics.leadsByChannel).reduce((a, b) => a + b, 0).toString()}
-              subtitle={Object.entries(pipelineMetrics.leadsByChannel).map(([k, v]) => `${k}: ${v}`).join(" · ")}
-              color="text-gray-900"
-            />
-            <KPICard
-              label="Show Rate"
-              value={showRate.text}
-              subtitle={`Demos realizadas / agendadas${showRate.detail ? ` · ${showRate.detail}` : ""}`}
-              color={showRate.hasSample ? "text-gray-900" : "text-gray-400"}
-            />
-            <KPICard
-              label="Close Rate"
-              value={closeRate.text}
-              subtitle={`Cierres / demos realizadas${closeRate.detail ? ` · ${closeRate.detail}` : ""}`}
-              color={closeRate.hasSample ? "text-gray-900" : "text-gray-400"}
-            />
-            <KPICard
-              label="Ciclo de Venta"
-              value={typeof pipelineMetrics.avgSalesCycleDays === "number" && Number.isFinite(pipelineMetrics.avgSalesCycleDays) ? `${pipelineMetrics.avgSalesCycleDays.toFixed(0)} días` : "Sin muestra"}
-              subtitle="Promedio lead → cierre"
-              color="text-gray-900"
-            />
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-            <p className="text-sm text-gray-400">Sin datos de HubSpot. Haz click en &quot;Sincronizar&quot; para cargar.</p>
-          </div>
-        )}
-      </section>
-
-      {/* Layer 3: Retention Signals - PostHog */}
-      <section>
-        <div className="mb-4 flex items-center gap-3 border-l-4 border-green-500 pl-3">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700">Capa 3 — Señales de retención</h2>
-            <p className="text-xs text-gray-400">¿Quién se va antes de que se vaya?</p>
-          </div>
-          <SourceBadge source="posthog" />
-          <span className="text-[10px] text-gray-400">Sync: {formatDate(phSyncedAt)}</span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="text-xs font-medium text-gray-500">Adopción en 7 días</div>
-            <div className="mt-2 text-2xl font-bold text-gray-900">—</div>
-            <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">No disponible</div>
-            <div className="mt-1 text-xs text-gray-400">% nuevos clientes con ≥1 presupuesto y ≥1 gasto en 7 días</div>
-            <div className="mt-2">
-              <span className="inline-flex rounded bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-700">PostgreSQL</span>
+      {stars.length > 0 && (
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {stars.map((s) => (
+            <div key={s.slug} className="rounded-xl border border-gray-200 bg-white p-5">
+              <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">
+                {s.signal && <span className={`h-2 w-2 rounded-full ${SIGNAL_DOT[s.signal]}`} aria-hidden="true" />}
+                {s.name}
+              </div>
+              <div className="mt-1 text-2xl font-semibold text-gray-900">{s.valueText ?? "—"}</div>
+              <div className="text-xs text-gray-500">{s.periodLabel ? `${s.periodLabel} · ` : ""}plan {s.planText ?? "—"}</div>
             </div>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="text-xs font-medium text-gray-500">Clientes en riesgo</div>
-            <div className="mt-2 text-2xl font-bold text-red-600">—</div>
-            <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">No disponible</div>
-            <div className="mt-1 text-xs text-gray-400">PES 0-1 por más de 21 días consecutivos</div>
-            <SourceBadge source="posthog" />
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="text-xs font-medium text-gray-500">Product Engagement Score</div>
-            <div className="mt-2 text-2xl font-bold text-gray-900">—</div>
-            <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">No disponible</div>
-            <div className="mt-1 text-xs text-gray-400">0-4 puntos: sesiones, presupuesto, gastos, usuarios activos</div>
-            <SourceBadge source="posthog" />
-          </div>
-        </div>
+          ))}
+        </section>
+      )}
 
-        <div className="mt-4 rounded-lg bg-gray-50 p-4 text-xs text-gray-500 leading-relaxed">
-          <strong>Notas de implementación:</strong><br/>
-          <span className="inline-flex rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">ChartMogul</span> Capas 1 disponibles con API key configurada.{" "}
-          <span className="inline-flex rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">HubSpot</span> Capa 2 requiere que Fede configure etapas del pipeline con fechas.{" "}
-          <span className="inline-flex rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">PostHog</span> PES requiere definir los 4 eventos con Adrian (~2h).{" "}
-          <span className="inline-flex rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">PostgreSQL</span> Adopción: endpoint read-only en backoffice (~30 min).
-        </div>
-      </section>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card title="Rocks en riesgo" count={x.rocksAtRisk.length} tone="red" href="/rocks">
+          {x.rocksAtRisk.length === 0 ? (
+            <p className="text-gray-500">Ningún Rock en riesgo.</p>
+          ) : (
+            <ul className="space-y-2">
+              {x.rocksAtRisk.map((r) => (
+                <li key={r.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-gray-900">{r.title}</span>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${rockStatus(r.status).badge}`}>{rockStatus(r.status).label}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">{r.areaName} · {r.ownerName}{r.risk ? ` · ${r.risk}` : ""}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {x.rocksStale.length > 0 && (
+            <p className="mt-3 border-t border-gray-100 pt-2 text-xs text-amber-700">
+              Sin actualizar hace 14 días o más: {x.rocksStale.map((r) => `${r.title} (${r.ownerName}, ${r.daysSinceUpdate} d)`).join(" · ")}
+            </p>
+          )}
+        </Card>
+
+        <Card title="Métricas fuera de meta" count={x.redMetrics.length} tone="red" href="/scorecard">
+          {x.redMetrics.length === 0 ? (
+            <p className="text-gray-500">Todas las métricas con dato están en meta.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {x.redMetrics.map((m) => (
+                <li key={`${m.areaName}:${m.label}`} className="flex items-baseline justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${SIGNAL_DOT[m.signal as keyof typeof SIGNAL_DOT] ?? "bg-gray-300"}`} aria-hidden="true" />
+                    <span className="truncate text-gray-800">{m.label}</span>
+                    <span className="shrink-0 text-xs text-gray-400">{m.areaName}</span>
+                  </span>
+                  <span className="shrink-0 text-gray-900">
+                    {m.valueText} <span className="text-xs text-gray-400">/ {m.targetText}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {x.missingMetrics.length > 0 && (
+            <p className="mt-3 border-t border-gray-100 pt-2 text-xs text-gray-500">
+              Sin dato del período: {x.missingMetrics.map((m) => `${m.label}${m.owner ? ` (${m.owner})` : ""}`).join(" · ")}
+            </p>
+          )}
+        </Card>
+
+        <Card title="Compromisos vencidos" count={x.overdueCommitments.length} tone="amber" href="/l10">
+          {x.overdueCommitments.length === 0 ? (
+            <p className="text-gray-500">No hay compromisos vencidos.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {x.overdueCommitments.map((c) => (
+                <li key={c.id} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-gray-800">{c.action}</span>
+                  <span className="shrink-0 text-xs text-gray-500">{c.ownerName} · {c.daysLate} d tarde</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Decisiones pendientes (IDS)" count={x.openIssues.length} tone="gray" href="/l10">
+          {x.openIssues.length === 0 ? (
+            <p className="text-gray-500">No hay IDS abiertos en la próxima reunión.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {x.openIssues.slice(0, 8).map((i) => (
+                <li key={i.id} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-gray-800">{i.title}</span>
+                  <span className="shrink-0 text-xs text-gray-500">{i.raisedBy}{i.votes ? ` · ▲${i.votes}` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card title="Check-in del equipo" count={x.checkin.pending.length} tone="amber" href={`/semana?w=${x.weekIso}`}>
+          <p className="text-gray-700">
+            Respondieron <strong>{x.checkin.answered}</strong> de {x.checkin.expected} esta semana.
+          </p>
+          {x.checkin.pending.length > 0 && <p className="mt-1 text-xs text-gray-500">Faltan: {x.checkin.pending.map((p) => p.name).join(", ")}</p>}
+          {pendingPreps.length > 0 && (
+            <p className="mt-2 text-xs text-amber-700">
+              Preparación de managers sin confirmar: {pendingPreps.map((p) => `${p.areaName}${p.leaderName ? ` (${p.leaderName})` : ""}`).join(" · ")}
+            </p>
+          )}
+        </Card>
+
+        <Card title="Energía por área" count={x.energyByArea.filter((e) => e.low > 0).length} tone="amber">
+          <ul className="space-y-1.5">
+            {x.energyByArea.map((e) => (
+              <li key={e.areaName} className="flex items-baseline justify-between gap-3">
+                <span className="text-gray-800">{e.areaName}</span>
+                <span className="text-xs text-gray-500">
+                  {e.average === null ? (e.count ? `${e.count} respuesta${e.count === 1 ? "" : "s"} (mínimo 3 para mostrar)` : "sin respuestas") : (
+                    <>
+                      <strong className="text-sm text-gray-900">{String(e.average).replace(".", ",")}</strong>/5
+                      {e.low > 0 ? ` · ${e.low} en 1–2` : ""}
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+
+      <details className="rounded-xl border border-gray-200 bg-white">
+        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">Finanzas y adquisición (ChartMogul · HubSpot)</summary>
+        <div className="border-t border-gray-100 p-5">
+          <FinanceSection />
         </div>
       </details>
     </div>

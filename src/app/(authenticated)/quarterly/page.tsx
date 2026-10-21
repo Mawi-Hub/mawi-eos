@@ -51,7 +51,7 @@ export default async function QuarterlyPage() {
               {new Date(q.startDate).toLocaleDateString("es")} — {new Date(q.endDate).toLocaleDateString("es")}
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+            <div className="mt-4 grid gap-4 sm:grid-cols-3 text-center">
               <div className="rounded-lg bg-gray-50 p-3">
                 <div className="text-xl font-bold text-gray-900">{q.rocks.length}</div>
                 <div className="text-xs text-gray-500">Rocks</div>
@@ -62,7 +62,7 @@ export default async function QuarterlyPage() {
               </div>
               <div className="rounded-lg bg-gray-50 p-3">
                 <div className="text-xl font-bold text-gray-900">{q._count.winsAndChallenges}</div>
-                <div className="text-xs text-gray-500">Wins & Challenges</div>
+                <div className="text-xs text-gray-500">Wins</div>
               </div>
             </div>
 
