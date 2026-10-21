@@ -20,6 +20,7 @@ export function ScorecardEntryForm({
   prompt,
   targetNumeric,
   targetDirection,
+  triggerLabel = "Actualizar",
 }: {
   metricId: string;
   metricName: string;
@@ -28,6 +29,8 @@ export function ScorecardEntryForm({
   prompt?: string | null;
   targetNumeric: number | null;
   targetDirection: string;
+  // Texto del botón que abre el formulario completo.
+  triggerLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -90,7 +93,7 @@ export function ScorecardEntryForm({
         onClick={() => setOpen(true)}
         className="rounded-md bg-mawi-50 px-3 py-1 text-xs font-medium text-mawi-700 hover:bg-mawi-100"
       >
-        Actualizar
+        {triggerLabel}
       </button>
     );
   }

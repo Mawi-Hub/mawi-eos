@@ -84,7 +84,9 @@ export async function runHubspotSync(): Promise<Response> {
           denominator: t.detail.denominator,
           dataState: t.value === null ? "no_sample" : t.value === 0 ? "confirmed_zero" : null,
           formulaVersion: PIPELINE_FORMULA_VERSION,
-          provenance: "HubSpot sync (definición pendiente de validar)",
+          provenance: metrics.unrecordedDemos
+            ? `HubSpot sync · ${metrics.unrecordedDemos} demo${metrics.unrecordedDemos === 1 ? "" : "s"} sin resultado registrado en HubSpot`
+            : "HubSpot sync",
           expectedValue: null,
           autoSynced: true,
           status: "pending",

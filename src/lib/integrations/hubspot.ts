@@ -127,7 +127,7 @@ export async function searchDemoMeetingsInPeriod(startISO: string, endISO: strin
   }));
 }
 
-export const PIPELINE_FORMULA_VERSION = "draft-1";
+export const PIPELINE_FORMULA_VERSION = "draft-2";
 
 // Definición PENDIENTE de validar con Ventas (cancelación y reprogramación).
 // Mientras tanto: una cita cancelada o reprogramada no cuenta como programada
@@ -137,6 +137,9 @@ export const SHOW_RATE_EXCLUDED_OUTCOMES: readonly string[] = ["CANCELED", "RESC
 
 export type RateDetail = { numerator: number; denominator: number };
 
+// Resultados de reunión que dicen si la demo ocurrió.
+export const RECORDED_OUTCOMES: readonly string[] = ["COMPLETED", "NO_SHOW"];
+
 export interface PipelineMetrics {
   leadsByChannel: Record<string, number>;
   // null = sin muestra (denominador 0). Nunca 0% por falta de datos.
@@ -144,6 +147,9 @@ export interface PipelineMetrics {
   showRateDetail: RateDetail;
   closeRate: number | null;
   closeRateDetail: RateDetail;
+  // Demos cuya hora ya pasó y que nadie marcó como realizada o no asistió en
+  // HubSpot. No entran al show rate: sin resultado no se sabe si hubo demo.
+  unrecordedDemos: number;
   avgSalesCycleDays: number;
   period: { start: string; end: string };
   formulaVersion: string;
@@ -160,7 +166,8 @@ function isCanceledMeeting(m: DemoMeeting): boolean {
 }
 
 // Puro: recibe datos ya traídos y devuelve las métricas del período.
-//   show rate  = demos realizadas / demos programadas para ocurrir en el período
+//   show rate  = demos realizadas / (realizadas + no asistió) del período; las
+//                que nadie marcó en HubSpot se informan aparte (unrecordedDemos)
 //   cierre     = ventas ganadas con fecha de cierre en el período / demos realizadas
 //                (cálculo operativo mensual, NO una conversión de cohorte)
 export function calculatePipelineMetrics(input: {
@@ -177,11 +184,16 @@ export function calculatePipelineMetrics(input: {
     leadsByChannel[source] = (leadsByChannel[source] || 0) + 1;
   }
 
-  const scheduled = demoMeetings.filter(
-    (m) => !isCanceledMeeting(m) && !SHOW_RATE_EXCLUDED_OUTCOMES.includes(m.outcome),
-  );
-  const completed = scheduled.filter((m) => m.outcome === "COMPLETED");
-  const showRateDetail = { numerator: completed.length, denominator: scheduled.length };
+  // Solo cuentan las demos con resultado registrado (realizada o no asistió).
+  // Una demo "programada" o sin resultado no es un no-show: es un dato que falta.
+  const active = demoMeetings.filter((m) => !isCanceledMeeting(m) && !SHOW_RATE_EXCLUDED_OUTCOMES.includes(m.outcome));
+  const recorded = active.filter((m) => RECORDED_OUTCOMES.includes(m.outcome));
+  const nowMs = Date.now();
+  const unrecordedDemos = active.filter(
+    (m) => !RECORDED_OUTCOMES.includes(m.outcome) && (!m.startTime || new Date(m.startTime).getTime() <= nowMs),
+  ).length;
+  const completed = recorded.filter((m) => m.outcome === "COMPLETED");
+  const showRateDetail = { numerator: completed.length, denominator: recorded.length };
 
   // Demos realizadas del mes (todas las completadas, incluso si la cita fue
   // reprogramada antes): es el denominador del cierre operativo.
@@ -199,6 +211,7 @@ export function calculatePipelineMetrics(input: {
     showRateDetail,
     closeRate: rate(closeRateDetail.numerator, closeRateDetail.denominator),
     closeRateDetail,
+    unrecordedDemos,
     avgSalesCycleDays,
     period,
     formulaVersion: PIPELINE_FORMULA_VERSION,

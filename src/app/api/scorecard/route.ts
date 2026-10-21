@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     where: { id: metricId },
   });
 
-  if (!metric || metric.ownerId !== session.user.id) {
+  // El dueño de la métrica o el CEO.
+  if (!metric || (metric.ownerId !== session.user.id && session.user.role !== "ceo")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
