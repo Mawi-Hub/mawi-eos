@@ -2,6 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { canManageMeetings } from "@/lib/l10Permissions";
+import { isLeaderRole } from "@/lib/access";
+import { THREAD_MARKER } from "@/lib/weekly/render";
 import { checkinPeriodStart, crIsoDate, formatCrDateTime } from "@/lib/time/costaRica";
 import { periodFromIso, weekParticipation } from "@/lib/checkin/teamCheckin";
 import { weekLabel } from "@/lib/checkin/teamForm";
@@ -18,6 +20,17 @@ const PREV_STYLE: Record<string, string> = {
   partial: "bg-amber-50 text-amber-700",
   not_done: "bg-red-50 text-red-700",
 };
+
+// Texto de Slack a texto simple para la vista del equipo (sin asteriscos ni guiones bajos de formato).
+function slackToPlain(text: string): string {
+  return text
+    .trim()
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1$2")
+    .replace(/(^|[\s(])_([^_\n]+)_/g, "$1$2");
+}
 
 export default async function SemanaPage({ searchParams }: { searchParams: Promise<{ w?: string }> }) {
   const session = await auth();
@@ -39,6 +52,43 @@ export default async function SemanaPage({ searchParams }: { searchParams: Promi
   ]);
   const { answers, members, pending } = participation;
   const areas = loaded.data.areas;
+
+  // El equipo ve lo publicado y la participación; las respuestas individuales,
+  // los bloqueos y el borrador son solo para managers.
+  if (!isLeaderRole(session?.user?.role)) {
+    const published = summary?.status === "sent" && summary.draftText ? summary.draftText.split(THREAD_MARKER) : null;
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Semana del {weekLabel(period)}</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Respondieron {answers.length} de {Math.max(members.length, answers.length)} personas el check-in.
+            </p>
+          </div>
+          <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 text-xs font-medium">
+            <Link href={`/semana?w=${prev}`} className="rounded-md px-3 py-1.5 text-gray-500 hover:text-gray-900">← Anterior</Link>
+            {!isCurrent && <Link href={`/semana?w=${next}`} className="rounded-md px-3 py-1.5 text-gray-500 hover:text-gray-900">Siguiente →</Link>}
+          </div>
+        </div>
+        {published ? (
+          <div className="space-y-3">
+            <article className="whitespace-pre-wrap rounded-xl border border-gray-200 bg-white p-5 text-sm leading-relaxed text-gray-800">{slackToPlain(published[0])}</article>
+            {published[1]?.trim() && (
+              <article className="whitespace-pre-wrap rounded-xl border border-dashed border-gray-200 bg-white p-5 text-sm leading-relaxed text-gray-700">{slackToPlain(published[1])}</article>
+            )}
+            {summary?.permalink && (
+              <a href={summary.permalink} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-mawi-700 underline">Ver en #weekly-check-ins</a>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+            El resumen de esta semana se publica el viernes en #weekly-check-ins.
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // Respuestas agrupadas por área, en el orden de las áreas.
   const groups = areas

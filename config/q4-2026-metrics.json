@@ -1,61 +1,221 @@
 {
-  "_comment": "Métricas del trimestre por área (Q4 2026), ligadas a los KPIs de cada Rock acordados el 2026-10-21. Las que apuntan a una métrica existente quedan aprobadas con su meta confirmada; las 'proposal' no tienen fuente todavía y se muestran como 'pendiente de configurar' (nunca como 0). En Customer, el prefijo del nombre (Onboarding:/Success:/Soporte:) decide qué equipo las ve en el check-in. Simulación: npx tsx scripts/apply-metric-selection.ts config/q4-2026-metrics.json · Escribir: agregar --apply. Una selección ya aprobada no se pisa salvo con --force.",
-  "quarter": { "year": 2026, "quarter": 4 },
+  "_comment": "Métricas del trimestre por área (Q4 2026), ligadas a los KPIs de cada Rock acordados el 2026-10-21. Las que apuntan a una métrica existente quedan aprobadas con su meta confirmada; las 'proposal' no tienen fuente todavía y se muestran como 'pendiente de configurar' (nunca como 0). En Customer, el prefijo del nombre (Onboarding:/Success:/Soporte:) decide qué equipo las ve en el check-in. Simulación: npx tsx scripts/apply-metric-selection.ts config/q4-2026-metrics.json · Escribir: agregar --apply. Una selección ya aprobada no se pisa salvo con --force. Una selección con createMetric crea la métrica si no existe; replacesProposal convierte la propuesta anterior en esa métrica.",
+  "quarter": {
+    "year": 2026,
+    "quarter": 4
+  },
   "plan": "H2 2026",
   "selections": [
     {
-      "areaKey": "ventas", "order": 1, "label": "Show rate", "metric": "Show Rate",
-      "setMetric": { "dataSource": "hubspot" },
-      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "HubSpot", "numerator": "demos realizadas", "denominator": "demos agendadas para el período", "target": 65, "targetText": "65%", "targetConfirmed": true }
+      "areaKey": "ventas",
+      "order": 1,
+      "label": "Show rate",
+      "metric": "Show Rate",
+      "setMetric": {
+        "dataSource": "hubspot"
+      },
+      "definition": {
+        "unit": "%",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "HubSpot",
+        "numerator": "demos realizadas",
+        "denominator": "demos agendadas para el período",
+        "target": 65,
+        "targetText": "65%",
+        "targetConfirmed": true
+      }
     },
     {
-      "areaKey": "ventas", "order": 2, "label": "Conversión demo → cierre", "metric": "Close Rate",
-      "setMetric": { "dataSource": "hubspot" },
-      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "HubSpot", "numerator": "ventas ganadas del mes", "denominator": "demos realizadas del mes", "target": 25, "targetText": "25%", "targetConfirmed": true, "notes": "Cálculo operativo mensual. La conversión por cohorte (ofertas aceptadas y pagadas / ofertas presentadas de la misma cohorte) queda pendiente de definir." }
+      "areaKey": "ventas",
+      "order": 2,
+      "label": "Conversión demo → cierre",
+      "metric": "Close Rate",
+      "setMetric": {
+        "dataSource": "hubspot"
+      },
+      "definition": {
+        "unit": "%",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "HubSpot",
+        "numerator": "ventas ganadas del mes",
+        "denominator": "demos realizadas del mes",
+        "target": 25,
+        "targetText": "25%",
+        "targetConfirmed": true,
+        "notes": "Cálculo operativo mensual. La conversión por cohorte (ofertas aceptadas y pagadas / ofertas presentadas de la misma cohorte) queda pendiente de definir."
+      }
     },
     {
-      "areaKey": "ventas", "order": 3, "label": "MRR nuevo", "metric": "New Biz MRR",
-      "definition": { "unit": "$", "frequency": "monthly", "direction": "above", "source": "ChartMogul", "target": 6500, "targetText": "$6.500/mes", "targetConfirmed": true }
+      "areaKey": "ventas",
+      "order": 3,
+      "label": "MRR nuevo",
+      "metric": "New Biz MRR",
+      "definition": {
+        "unit": "$",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "ChartMogul",
+        "target": 6500,
+        "targetText": "$6.500/mes",
+        "targetConfirmed": true
+      }
     },
     {
-      "areaKey": "growth", "order": 1, "label": "MRR de expansión", "metric": "Expansion MRR",
-      "definition": { "unit": "$", "frequency": "monthly", "direction": "above", "source": "ChartMogul", "target": 1000, "targetText": "$1.000/mes", "targetConfirmed": true }
+      "areaKey": "growth",
+      "order": 1,
+      "label": "MRR de expansión",
+      "metric": "Expansion MRR",
+      "definition": {
+        "unit": "$",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "ChartMogul",
+        "target": 1000,
+        "targetText": "$1.000/mes",
+        "targetConfirmed": true
+      }
     },
     {
-      "areaKey": "growth", "order": 2, "label": "% de cuentas con proceso claro de upsell", "proposal": "growth_upsell_process_pct",
-      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "por definir con Fede", "numerator": "cuentas con proceso de upsell documentado y en curso", "denominator": "cuentas activas", "notes": "Definir qué cuenta como 'proceso claro' y dónde se registra." }
+      "areaKey": "growth",
+      "order": 2,
+      "label": "% de cuentas con proceso claro de upsell",
+      "proposal": "growth_upsell_process_pct",
+      "definition": {
+        "unit": "%",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "por definir con Fede",
+        "numerator": "cuentas con proceso de upsell documentado y en curso",
+        "denominator": "cuentas activas",
+        "notes": "Definir qué cuenta como 'proceso claro' y dónde se registra."
+      }
     },
     {
-      "areaKey": "customer", "order": 1, "label": "Onboarding: cuentas nuevas con primer valor en 14 días", "proposal": "customer_first_value_14d",
-      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "por definir con Gaby y Producto", "numerator": "cuentas nuevas con presupuesto con gastos asignados y primer reporte al ejecutivo en ≤14 días", "denominator": "cuentas nuevas cuya ventana de 14 días ya terminó", "reference": "60%" }
+      "areaKey": "customer",
+      "order": 1,
+      "label": "Onboarding: cuentas nuevas con primer valor en 14 días",
+      "proposal": "customer_first_value_14d",
+      "definition": {
+        "unit": "%",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "por definir con Gaby y Producto",
+        "numerator": "cuentas nuevas con presupuesto con gastos asignados y primer reporte al ejecutivo en ≤14 días",
+        "denominator": "cuentas nuevas cuya ventana de 14 días ya terminó",
+        "reference": "60%"
+      }
     },
     {
-      "areaKey": "customer", "order": 2, "label": "Onboarding: Days to Activate", "metric": "Days to Activate",
-      "definition": { "unit": "days", "frequency": "monthly", "direction": "below", "source": "manual (Gaby)", "target": 30, "targetText": "≤ 30 días (hoy 31)", "targetConfirmed": true }
+      "areaKey": "customer",
+      "order": 2,
+      "label": "Onboarding: Days to Activate",
+      "metric": "Days to Activate",
+      "definition": {
+        "unit": "days",
+        "frequency": "monthly",
+        "direction": "below",
+        "source": "manual (Gaby)",
+        "target": 30,
+        "targetText": "≤ 30 días (hoy 31)",
+        "targetConfirmed": true
+      }
     },
     {
-      "areaKey": "customer", "order": 3, "label": "Success: churn bruto de MRR", "proposal": "customer_gross_mrr_churn",
-      "definition": { "unit": "%", "frequency": "monthly", "direction": "below", "source": "ChartMogul (MRR churn rate; por conectar)", "reference": "≤ 3% mensual en noviembre y diciembre", "notes": "CCR del scorecard mide churn de clientes, no de MRR." }
+      "areaKey": "customer",
+      "order": 3,
+      "label": "Success: churn bruto de MRR",
+      "definition": {
+        "unit": "%",
+        "frequency": "monthly",
+        "direction": "below",
+        "source": "ChartMogul (cancelaciones + reducciones / MRR del mes anterior)",
+        "target": 3,
+        "targetText": "≤ 3% mensual",
+        "targetConfirmed": true
+      },
+      "metric": "Churn bruto de MRR",
+      "replacesProposal": "customer_gross_mrr_churn",
+      "createMetric": {
+        "unit": "%",
+        "frequency": "monthly",
+        "dataSource": "chartmogul",
+        "targetNumeric": 3,
+        "targetValue": "≤ 3%",
+        "targetDirection": "below",
+        "ownerEmail": "gabriela@mawi.io",
+        "category": "customer_success"
+      }
     },
     {
-      "areaKey": "customer", "order": 4, "label": "Success: MRR prechurn recuperado", "proposal": "customer_prechurn_mrr_recovered",
-      "definition": { "unit": "$", "frequency": "monthly", "direction": "above", "source": "por definir (registro de cuentas en riesgo)", "notes": "MRR de cuentas marcadas en riesgo que siguen activas al cierre del mes." }
+      "areaKey": "customer",
+      "order": 4,
+      "label": "Success: MRR prechurn recuperado",
+      "proposal": "customer_prechurn_mrr_recovered",
+      "definition": {
+        "unit": "$",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "por definir (registro de cuentas en riesgo)",
+        "notes": "MRR de cuentas marcadas en riesgo que siguen activas al cierre del mes."
+      }
     },
     {
-      "areaKey": "producto", "order": 1, "label": "Empresas con uso semanal de la app móvil", "proposal": "producto_mobile_weekly_companies",
-      "definition": { "unit": "count", "frequency": "weekly", "direction": "above", "source": "PostHog (eventos por definir)", "reference": "15 empresas" }
+      "areaKey": "producto",
+      "order": 1,
+      "label": "Empresas con uso semanal de la app móvil",
+      "proposal": "producto_mobile_weekly_companies",
+      "definition": {
+        "unit": "count",
+        "frequency": "weekly",
+        "direction": "above",
+        "source": "PostHog (eventos por definir)",
+        "reference": "15 empresas"
+      }
     },
     {
-      "areaKey": "producto", "order": 2, "label": "Empresas que completan el flujo inicial sin ayuda", "proposal": "producto_selfserve_activation",
-      "definition": { "unit": "count", "frequency": "monthly", "direction": "above", "source": "PostHog + validación de Onboarding (por definir)", "reference": "2 empresas" }
+      "areaKey": "producto",
+      "order": 2,
+      "label": "Empresas que completan el flujo inicial sin ayuda",
+      "proposal": "producto_selfserve_activation",
+      "definition": {
+        "unit": "count",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "PostHog + validación de Onboarding (por definir)",
+        "reference": "2 empresas"
+      }
     },
     {
-      "areaKey": "ingenieria", "order": 1, "label": "MRR en riesgo por bugs", "metric": "MRR en Riesgo",
-      "definition": { "unit": "$", "frequency": "weekly", "direction": "below", "source": "manual (Adrián)", "target": 3000, "targetText": "< $3.000", "targetConfirmed": true }
+      "areaKey": "ingenieria",
+      "order": 1,
+      "label": "MRR en riesgo por bugs",
+      "metric": "MRR en Riesgo",
+      "definition": {
+        "unit": "$",
+        "frequency": "weekly",
+        "direction": "below",
+        "source": "manual (Adrián)",
+        "target": 3000,
+        "targetText": "< $3.000",
+        "targetConfirmed": true
+      }
     },
     {
-      "areaKey": "ingenieria", "order": 2, "label": "% de soluciones del agente aceptadas", "proposal": "ingenieria_ai_first_review_acceptance",
-      "definition": { "unit": "%", "frequency": "monthly", "direction": "above", "source": "seguimiento del piloto (por definir)", "numerator": "propuestas aceptadas en la primera revisión", "denominator": "propuestas que llegaron a revisión", "reference": "80%" }
+      "areaKey": "ingenieria",
+      "order": 2,
+      "label": "% de soluciones del agente aceptadas",
+      "proposal": "ingenieria_ai_first_review_acceptance",
+      "definition": {
+        "unit": "%",
+        "frequency": "monthly",
+        "direction": "above",
+        "source": "seguimiento del piloto (por definir)",
+        "numerator": "propuestas aceptadas en la primera revisión",
+        "denominator": "propuestas que llegaron a revisión",
+        "reference": "80%"
+      }
     }
   ]
 }

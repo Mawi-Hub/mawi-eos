@@ -14,7 +14,8 @@ export async function PATCH(
   const { rockId } = await params;
   const rock = await prisma.rock.findUnique({ where: { id: rockId } });
 
-  if (!rock || rock.ownerId !== session.user.id) {
+  // El dueño o el CEO.
+  if (!rock || (rock.ownerId !== session.user.id && session.user.role !== "ceo")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -49,7 +50,8 @@ export async function DELETE(
   const { rockId } = await params;
   const rock = await prisma.rock.findUnique({ where: { id: rockId } });
 
-  if (!rock || rock.ownerId !== session.user.id) {
+  // El dueño o el CEO.
+  if (!rock || (rock.ownerId !== session.user.id && session.user.role !== "ceo")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

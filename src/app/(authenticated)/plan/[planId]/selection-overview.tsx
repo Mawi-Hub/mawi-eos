@@ -18,7 +18,6 @@ import {
 } from "@/lib/plan/legacyArea";
 import type { SelectionMetricView } from "@/lib/selection/types";
 import { PlanSyncButton } from "./sync-button";
-import { PlanShareButton } from "./share-button";
 
 // Portada del Plan H2 en modo selección: por trimestre y por área de reporte,
 // solo las métricas elegidas. El árbol de ingresos y las 3 palancas quedan
@@ -164,7 +163,6 @@ export async function SelectionOverview({
     <div className="space-y-8">
       <section className="flex flex-wrap items-center gap-3">
         {isCeo && <PlanSyncButton planId={planId} />}
-        <PlanShareButton planId={planId} />
       </section>
 
       {quarters.length > 0 && (

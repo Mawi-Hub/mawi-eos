@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { maxRocksPerPerson } from "@/lib/company/config";
 
 export async function POST(request: Request) {
   const session = await auth();
@@ -10,13 +11,14 @@ export async function POST(request: Request) {
 
   const body = await request.json();
 
-  // Check max 2 rocks per person per quarter
+  // Tope de Rocks por persona y trimestre (ROCKS_PER_PERSON_MAX, 2 por defecto).
   const existingCount = await prisma.rock.count({
     where: { ownerId: session.user.id, quarterId: body.quarterId },
   });
 
-  if (existingCount >= 2) {
-    return NextResponse.json({ error: "Máximo 2 rocks por trimestre" }, { status: 400 });
+  const max = maxRocksPerPerson();
+  if (existingCount >= max) {
+    return NextResponse.json({ error: `Máximo ${max} rocks por trimestre` }, { status: 400 });
   }
 
   const rock = await prisma.rock.create({

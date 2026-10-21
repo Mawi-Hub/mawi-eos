@@ -16,6 +16,8 @@ import { PreReadChecklist } from "./preread-checklist";
 import { DeleteIssueButton } from "./delete-issue-button";
 import { PhaseStepper } from "./phase-stepper";
 import { canManageMeetings } from "@/lib/l10Permissions";
+import { LEADER_ROLES } from "@/lib/access";
+import { quarterOverview, rockStatus } from "@/lib/company/areas";
 import { crMonthStart } from "@/lib/time/costaRica";
 import { getMetricScope } from "@/lib/selection/quarterSelection";
 import {
@@ -124,7 +126,8 @@ export default async function L10Page() {
       include: { owner: true },
       orderBy: [{ owner: { name: "asc" } }, { createdAt: "asc" }],
     }),
-    prisma.user.findMany({ orderBy: { name: "asc" } }),
+    // Solo managers: quien entra con Google como "team" no participa de la L10.
+    prisma.user.findMany({ where: { role: { in: [...LEADER_ROLES] } }, orderBy: { name: "asc" } }),
   ]);
 
   // Derive red metrics and off-track rocks from the bulk fetches above
@@ -367,7 +370,7 @@ export default async function L10Page() {
       key: "win",
       label: "Win de la semana",
       done: myWins.length > 0,
-      link: myWins.length === 0 ? { href: "/wins-challenges", label: "Agregar →" } : undefined,
+      link: undefined,
     });
     if (myManualMetrics.length > 0) {
       checklistItems.push({
@@ -397,6 +400,21 @@ export default async function L10Page() {
       done: currentUserRead,
     });
   }
+
+  // Resumen por área para la cabecera.
+  const overview = await quarterOverview(activeQuarter.id);
+  const areaStrip = overview.areas.map((a) => {
+    const rockIds = new Set(a.rocks.map((r) => r.id));
+    const metricIds = new Set(a.metrics.map((m) => m.scorecardMetricId).filter((v): v is string => !!v));
+    return {
+      id: a.id,
+      name: a.name,
+      rockTitle: a.principalRock?.title ?? null,
+      rockStatus: a.principalRock?.status ?? null,
+      red: a.metrics.filter((m) => m.signal === "off_track" || m.signal === "riesgo").length,
+      issues: (meeting?.issues ?? []).filter((i) => (i.linkedRockId && rockIds.has(i.linkedRockId)) || (i.linkedMetricId && metricIds.has(i.linkedMetricId))).length,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -456,6 +474,25 @@ export default async function L10Page() {
 
       {meeting && meeting.status === "in_progress" && (
         <PhaseStepper meetingId={meeting.id} currentPhase={meeting.phase} canManage={canManage} />
+      )}
+
+      {/* Por área: Rock principal, métricas fuera de meta e IDS ligados, de un vistazo. */}
+      {areaStrip.length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {areaStrip.map((a) => (
+            <div key={a.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-900">{a.name}</span>
+                {a.rockStatus && <span className={`h-2 w-2 rounded-full ${rockStatus(a.rockStatus).dot}`} title={`Rock: ${rockStatus(a.rockStatus).label}`} />}
+              </div>
+              <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{a.rockTitle ?? "Rock por definir"}</p>
+              <div className="mt-1.5 flex flex-wrap gap-1 text-[10px]">
+                {a.red > 0 ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-red-700">{a.red} métrica{a.red === 1 ? "" : "s"} fuera</span> : <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-emerald-700">métricas ok</span>}
+                {a.issues > 0 && <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-gray-600">{a.issues} IDS</span>}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       <div className={`mx-auto w-full space-y-6 ${inMeeting ? "max-w-5xl" : "max-w-3xl"}`}>

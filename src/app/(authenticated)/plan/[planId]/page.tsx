@@ -8,7 +8,6 @@ import { PlanAreaSection } from "@/components/plan/PlanAreaSection";
 import type { KPIDirection } from "@/lib/plan/calculations";
 import { overlayScorecardActuals } from "@/lib/plan/scorecardOverlay";
 import { PlanSyncButton } from "./sync-button";
-import { PlanShareButton } from "./share-button";
 import { isSelectionEnabled } from "@/lib/report/config";
 import { SelectionOverview } from "./selection-overview";
 
@@ -121,7 +120,6 @@ export default async function PlanOverviewPage({
     <div className="space-y-8">
       <section className="flex flex-wrap items-center gap-3">
         {session?.user.role === "ceo" && <PlanSyncButton planId={planId} />}
-        <PlanShareButton planId={planId} />
       </section>
 
       <Plan3Palancas kpis={northStarKpis} endDate={plan.endDate} />
