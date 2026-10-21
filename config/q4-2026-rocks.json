@@ -1,0 +1,55 @@
+{
+  "_comment": "Rocks de Q4 2026 (acordados el 2026-10-21). principal = el Rock que representa al área en la preparación de managers y en el resumen semanal (uno por área). Simulación: npx tsx scripts/apply-rocks.ts config/q4-2026-rocks.json · Escribir: agregar --apply. Idempotente por trimestre + dueño + título: correrlo dos veces no duplica.",
+  "quarter": { "year": 2026, "quarter": 4 },
+  "rocks": [
+    {
+      "areaKey": "ventas", "ownerEmail": "lorena@mawi.io", "principal": true,
+      "title": "Cerrar de forma consistente clientes con el perfil que retiene",
+      "description": "El equipo cierra de forma consistente clientes con el perfil que retiene, con un proceso documentado que se transfiere a Success.",
+      "deliverable": "Proceso comercial documentado y transferido a Success",
+      "doneCriteria": "Show rate 65%, conversión 25% y MRR nuevo de $6.500/mes"
+    },
+    {
+      "areaKey": "growth", "ownerEmail": "fede@mawi.io", "principal": true,
+      "title": "Proceso de upselling y retención validado con datos",
+      "description": "Proceso de upselling y retención validado con datos, estandarizado y probado con un experimento de growth al mes. Conectado con la retención y el uso de los clientes.",
+      "deliverable": "Proceso de upsell y retención estandarizado, con un experimento de growth por mes",
+      "doneCriteria": "MRR de expansión de $1.000/mes y % de cuentas con proceso claro de upsell"
+    },
+    {
+      "areaKey": "customer", "ownerEmail": "gabriela@mawi.io", "principal": true,
+      "title": "Cuentas nuevas llegan a su primer valor en 2 semanas",
+      "description": "Las cuentas nuevas llegan a su primer valor (presupuesto con gastos asignados y primer reporte al ejecutivo) en sus primeras 2 semanas, de forma repetible.",
+      "deliverable": "Proceso de activación repetible hasta el primer valor",
+      "doneCriteria": "60% de las cuentas nuevas lo logran en 14 días y Days to Activate ≤ 30 (hoy 31)"
+    },
+    {
+      "areaKey": "customer", "ownerEmail": "gabriela@mawi.io", "principal": false,
+      "title": "Detectar y recuperar cuentas en riesgo antes de que cancelen",
+      "description": "Detectar y recuperar cuentas en riesgo antes de que se cancelen.",
+      "deliverable": "Proceso de detección y recuperación de cuentas en riesgo",
+      "doneCriteria": "Churn bruto de MRR ≤ 3% mensual en noviembre y diciembre, y MRR prechurn recuperado"
+    },
+    {
+      "areaKey": "producto", "ownerEmail": "gloriana@mawi.io", "principal": true,
+      "title": "App móvil publicada y usada cada semana por 15 empresas",
+      "description": "App móvil publicada en ambas tiendas y usada cada semana por 15 empresas.",
+      "deliverable": "App móvil publicada en App Store y Google Play, con eventos de PostHog definidos",
+      "doneCriteria": "15 empresas con uso semanal y eventos de PostHog definidos"
+    },
+    {
+      "areaKey": "producto", "ownerEmail": "gloriana@mawi.io", "principal": false,
+      "title": "Flujo inicial financiero validado y autogestionado",
+      "description": "Validar con clientes y equipo el flujo inicial financiero de Mawi, y convertirlo en autogestionado.",
+      "deliverable": "Flujo inicial de activación autogestionado",
+      "doneCriteria": "2 empresas completan el flujo inicial de activación sin ayuda"
+    },
+    {
+      "areaKey": "ingenieria", "ownerEmail": "adrian@mawi.io", "principal": true,
+      "title": "Bajar el MRR en riesgo por bugs a menos de $3k",
+      "description": "Bajar el MRR en riesgo por bugs a menos de $3k con un agente que absorbe bugs y mejoras de baja complejidad.",
+      "deliverable": "Agente que absorbe bugs y mejoras de baja complejidad",
+      "doneCriteria": "MRR en riesgo por bugs < $3k y 80% de soluciones aceptadas"
+    }
+  ]
+}
