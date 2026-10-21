@@ -1,0 +1,21 @@
+{
+  "_comment": "Quién recibe el check-in semanal y con qué preguntas (teamKey). Slack IDs tomados del directorio de Slack el 2026-10-21; revisalos antes de aplicar. Simulación: npx tsx scripts/apply-team-roster.ts config/team-roster.json · Escribir: agregar --apply. teamKey: ventas | soporte | revops | ingenieria | producto | onboarding | cs. areaKey = área de reporte cuyo Rock y KPIs alimenta.",
+  "members": [
+    { "displayName": "Lorena Pulido", "slackUserId": "U082XU134KW", "email": "lorena@mawi.io", "areaKey": "ventas", "teamKey": "ventas", "isLeader": true },
+    { "displayName": "María Paula Arango", "slackUserId": "U0BF321NYV8", "areaKey": "ventas", "teamKey": "ventas" },
+    { "displayName": "Daniel Salazar", "slackUserId": "U0BAEJNG4FN", "areaKey": "ventas", "teamKey": "ventas" },
+    { "displayName": "Carlos Girón", "slackUserId": "U08Q82YKRPY", "areaKey": "customer", "teamKey": "soporte" },
+    { "displayName": "Fede", "slackUserId": "UDBHDM6A0", "email": "fede@mawi.io", "areaKey": "growth", "teamKey": "revops", "isLeader": true },
+    { "displayName": "Adrián Agüero", "slackUserId": "U07BGGKDD17", "email": "adrian@mawi.io", "areaKey": "ingenieria", "teamKey": "ingenieria", "isLeader": true },
+    { "displayName": "Alberto", "slackUserId": "U05T4J5E8EL", "areaKey": "ingenieria", "teamKey": "ingenieria" },
+    { "displayName": "Ángel Uray", "slackUserId": "U06G3TB04DD", "areaKey": "ingenieria", "teamKey": "ingenieria" },
+    { "displayName": "Owen", "slackUserId": "U07NQ2HC11Q", "areaKey": "ingenieria", "teamKey": "ingenieria" },
+    { "displayName": "Bairon Horna", "slackUserId": "U0A2V01PRDY", "areaKey": "ingenieria", "teamKey": "ingenieria" },
+    { "displayName": "Gloriana González", "slackUserId": "U046LU6A6AU", "email": "glori@mawi.io", "areaKey": "producto", "teamKey": "producto", "isLeader": true },
+    { "displayName": "Gustavo", "slackUserId": "U0BCSMWC6KW", "areaKey": "producto", "teamKey": "producto" },
+    { "displayName": "Moni", "slackUserId": "U0AFGQD8Q4W", "areaKey": "customer", "teamKey": "onboarding" },
+    { "displayName": "Jay", "slackUserId": "U0ABZ16HCHF", "areaKey": "customer", "teamKey": "onboarding" },
+    { "displayName": "Gaby", "slackUserId": "U08MYHKQB34", "email": "gaby@mawi.io", "areaKey": "customer", "teamKey": "cs", "isLeader": true },
+    { "displayName": "Mayela Herrera", "slackUserId": "U0BTGL60ZP1", "areaKey": "customer", "teamKey": "cs" }
+  ]
+}

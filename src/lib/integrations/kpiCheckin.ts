@@ -1,6 +1,6 @@
 // KPI check-in por DM: Slack → Claude → Scorecard / Wins & Challenges.
 //
-// Un cron (jueves 4pm CR) le abre un DM a cada líder del equipo.
+// Un cron (viernes 8am CR) le abre un DM a cada líder del equipo.
 // La conversación avanza en 3 pasos (KpiCheckinSession.step):
 //   wins       → guarda el win de la semana como WinChallenge
 //   metrics    → extrae valores del texto y escribe ScorecardEntry del período
@@ -130,7 +130,7 @@ async function claudeJson<T>(prompt: string): Promise<T | null> {
 
 // Los KPIs que le tocan a esa persona. La prueba usa exactamente los mismos
 // que la corrida real (solo cambia que no se escribe nada), así el ensayo
-// refleja lo que va a pasar el jueves — incluido saltarse el paso si no
+// refleja lo que va a pasar el viernes — incluido saltarse el paso si no
 // tiene métricas manuales propias.
 async function metricsForSession(session: KpiCheckinSession): Promise<ScorecardMetric[]> {
   return prisma.scorecardMetric.findMany({
@@ -251,7 +251,7 @@ export async function startKpiCheckins(options?: StartKpiCheckinOptions): Promis
     await postSlackMessage(
       dmChannel,
       (preview ? "🧪 *MODO PRUEBA* — nada de lo que respondas se guarda.\n\n" : "") +
-        `¡Hola ${firstName}! 👋 Check-in para la reunión de management del viernes.\n\n` +
+        `¡Hola ${firstName}! 👋 Check-in para la reunión de management de hoy (cerralo antes de las 9:00).\n\n` +
         `Primero lo bueno: *¿cuál fue tu WIN de la semana?* 🏆\n` +
         `_Contámelo en una o dos líneas — después te pido tus KPIs._`,
     );
@@ -427,9 +427,9 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
   );
 }
 
-// La reunión a la que se enganchan los challenges. El check-in corre el jueves
-// y el cron del L10 abre la reunión el viernes, así que acá normalmente todavía
-// no existe: se crea como "upcoming" y el cron del viernes la reutiliza.
+// La reunión a la que se enganchan los challenges. El cron del L10 (viernes
+// 07:00) abre la reunión antes de este check-in (08:00), así que normalmente ya
+// existe; si no, se crea como "upcoming" y el cron la reutiliza.
 async function findOrCreateUpcomingMeeting() {
   const quarter = await prisma.quarter.findFirst({ where: { isActive: true } });
   if (!quarter) return null;
@@ -686,8 +686,8 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
     session.slackChannelId,
     session.preview
       ? `🧪 Fin de la prueba, ${firstName}. Estos challenges habría registrado:\n${challengeSummary}\n\n` +
-          `No se guardó nada en el tablero. Así se va a ver el jueves de verdad. 🚀`
-      : `🙌 Listo, ${firstName}. Quedó todo cargado para el viernes:\n${challengeSummary}\n\n` +
+          `No se guardó nada en el tablero. Así se va a ver el viernes de verdad. 🚀`
+      : `🙌 Listo, ${firstName}. Quedó todo cargado para la reunión:\n${challengeSummary}\n\n` +
           (appUrl ? `Tus challenges ya están como issues del L10: ${appUrl}/l10\n` : "") +
           `¡Buen fin de semana! 🚀`,
   );

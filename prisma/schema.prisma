@@ -651,6 +651,9 @@ model ReportMember {
   slackUserId      String?   @map("slack_user_id")
   identityVerified Boolean   @default(false) @map("identity_verified")
   isLeader         Boolean   @default(false) @map("is_leader")
+  // Equipo del check-in semanal (ventas, soporte, revops, ingenieria,
+  // producto, onboarding, cs): define qué preguntas recibe. null = no recibe.
+  teamKey          String?   @map("team_key")
   validFrom        DateTime  @default(now()) @map("valid_from")
   validTo          DateTime? @map("valid_to")
   createdAt        DateTime  @default(now()) @map("created_at")
@@ -844,4 +847,86 @@ model ReportDelivery {
   @@unique([reportId, destination, partIndex])
   @@index([status])
   @@map("report_deliveries")
+}
+
+// Invitación al check-in semanal del equipo: un DM por persona y semana. Guarda
+// el mensaje para marcarlo como respondido y los números que se mostraron.
+model TeamCheckinInvite {
+  id          String    @id @default(uuid())
+  periodStart DateTime  @map("period_start") // lunes 00:00 CR de la semana
+  memberId    String    @map("member_id")
+  slackUserId String    @map("slack_user_id")
+  dmChannel   String    @map("dm_channel")
+  messageTs   String?   @map("message_ts")
+  remindedAt  DateTime? @map("reminded_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([periodStart, slackUserId])
+  @@map("team_checkin_invites")
+}
+
+// Respuesta estructurada del check-in semanal (formulario de Slack). Se refleja
+// en CheckinEvidence (resultado = win, bloqueo = reto) para que la preparación
+// de líderes y el resumen de management la vean sin cambios.
+model TeamCheckin {
+  id          String   @id @default(uuid())
+  periodStart DateTime @map("period_start")
+  slackUserId String   @map("slack_user_id")
+  memberId    String?  @map("member_id")
+  userId      String?  @map("user_id")
+  areaKey     String?  @map("area_key")
+  teamKey     String   @map("team_key")
+  authorName  String   @map("author_name")
+  result      String
+  learning    String
+  extra       String?
+  blocker     String?
+  commitment  String
+  // Compromiso de la semana anterior y cómo terminó: done | partial | not_done.
+  previousCommitment       String? @map("previous_commitment")
+  previousCommitmentStatus String? @map("previous_commitment_status")
+  // [{ key, label, value }] — números personales que no salen de un sistema.
+  numbers     Json     @default("[]")
+  // [{ at, result, learning, extra, blocker, commitment }]
+  revisions   Json     @default("[]")
+  evidenceId  String?  @map("evidence_id")
+  notionPageId String? @map("notion_page_id")
+  // Curaduría del resumen: oculto no sale; destacado va primero.
+  hidden      Boolean  @default(false)
+  highlighted Boolean  @default(false)
+  submittedAt DateTime @map("submitted_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([periodStart, slackUserId])
+  @@index([periodStart])
+  @@map("team_checkins")
+}
+
+// Resumen semanal de empresa: un borrador editable por semana y su envío a
+// #weekly-check-ins. sending/sent se reclaman con un UPDATE condicional para que
+// un doble clic no publique dos veces.
+model WeeklySummary {
+  id          String    @id @default(uuid())
+  periodStart DateTime  @unique @map("period_start")
+  status      String    @default("draft") // draft | sending | sent | failed
+  draftText   String?   @map("draft_text")
+  generatedAt DateTime? @map("generated_at")
+  // Última edición a mano del borrador: el cron no lo pisa.
+  editedAt    DateTime? @map("edited_at")
+  // Ítems de management (acuerdos, bloqueos) que no van en el resumen: ["commitment:<id>", "issue:<id>"].
+  hiddenItems Json      @default("[]") @map("hidden_items")
+  // Reunión de management incluida (si hubo una cerrada esa semana).
+  meetingId   String?   @map("meeting_id")
+  channel     String?
+  slackTs     String?   @map("slack_ts")
+  permalink   String?
+  sentAt      DateTime? @map("sent_at")
+  sentById    String?   @map("sent_by_id")
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("weekly_summaries")
 }

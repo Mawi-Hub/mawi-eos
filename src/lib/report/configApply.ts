@@ -5,13 +5,14 @@
 
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { isTeamKey, TEAMS } from "@/lib/checkin/teams";
 import { hasBlockingIssues, validateSelection, type CandidateRow, type ValidationIssue } from "@/lib/selection/validate";
 
 export type ReportConfig = {
   quarter: { year: number; quarter: number; objective?: string | null };
   plan: { name: string };
   areas: Array<{ key: string; name: string; leaderEmail?: string | null; alternateEmail?: string | null; sortOrder?: number }>;
-  members?: Array<{ areaKey: string; displayName: string; email?: string | null; slackUserId?: string | null; slackWorkspaceId?: string | null; isLeader?: boolean; verified?: boolean }>;
+  members?: Array<{ areaKey: string; displayName: string; email?: string | null; slackUserId?: string | null; slackWorkspaceId?: string | null; isLeader?: boolean; verified?: boolean; teamKey?: string | null }>;
   principalRocks?: Record<string, string | null>;
   selections: Array<{
     areaKey: string;
@@ -78,11 +79,12 @@ export async function applyReportConfig(config: ReportConfig, options: { apply: 
     const areaId = areaIds.get(m.areaKey);
     if (!areaId) { report.review.push(`Miembro ${m.displayName}: área ${m.areaKey} no existe`); continue; }
     if (!m.slackUserId && !m.email) { report.review.push(`Miembro ${m.displayName}: sin slackUserId ni email, pendiente de mapeo`); }
-    act(`roster: ${m.displayName} → ${m.areaKey} (${m.verified ? "verificado" : "pendiente de verificar"})`);
+    if (m.teamKey && !isTeamKey(m.teamKey)) { report.review.push(`Miembro ${m.displayName}: equipo ${m.teamKey} no existe (${Object.keys(TEAMS).join(", ")})`); continue; }
+    act(`roster: ${m.displayName} → ${m.areaKey}${m.teamKey ? ` · check-in ${m.teamKey}` : ""} (${m.verified ? "verificado" : "pendiente de verificar"})`);
     if (options.apply && !areaId.startsWith("dry:")) {
       const userId = m.email ? userByEmail.get(m.email) ?? null : null;
       const existing = m.slackUserId ? await prisma.reportMember.findFirst({ where: { slackUserId: m.slackUserId, areaId, validTo: null } }) : null;
-      const data = { areaId, userId, displayName: m.displayName, slackUserId: m.slackUserId ?? null, slackWorkspaceId: m.slackWorkspaceId ?? null, identityVerified: m.verified === true, isLeader: m.isLeader === true };
+      const data = { areaId, userId, displayName: m.displayName, slackUserId: m.slackUserId ?? null, slackWorkspaceId: m.slackWorkspaceId ?? null, identityVerified: m.verified === true, isLeader: m.isLeader === true, teamKey: m.teamKey ?? null };
       if (existing) await prisma.reportMember.update({ where: { id: existing.id }, data });
       else await prisma.reportMember.create({ data });
     }
