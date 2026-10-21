@@ -1,5 +1,12 @@
 {
-  "_comment": "Quién recibe el check-in semanal y con qué preguntas (teamKey). Slack IDs tomados del directorio de Slack el 2026-10-21; revisalos antes de aplicar. Simulación: npx tsx scripts/apply-team-roster.ts config/team-roster.json · Escribir: agregar --apply. teamKey: ventas | soporte | revops | ingenieria | producto | onboarding | cs. areaKey = área de reporte cuyo Rock y KPIs alimenta.",
+  "_comment": "Quién recibe el check-in semanal y con qué preguntas (teamKey). Slack IDs tomados del directorio de Slack el 2026-10-21; revisalos antes de aplicar. Simulación: npx tsx scripts/apply-team-roster.ts config/team-roster.json · Escribir: agregar --apply. teamKey: ventas | soporte | revops | ingenieria | producto | onboarding | cs. areaKey = área de reporte cuyo Rock y KPIs alimenta. Las áreas se crean si faltan (con su líder por email); nunca se cambia el líder de un área existente.",
+  "areas": [
+    { "key": "ventas", "name": "Ventas", "leaderEmail": "lorena@mawi.io", "sortOrder": 1 },
+    { "key": "growth", "name": "RevOps · Growth", "leaderEmail": "fede@mawi.io", "sortOrder": 2 },
+    { "key": "customer", "name": "Customer", "leaderEmail": "gabriela@mawi.io", "sortOrder": 3 },
+    { "key": "producto", "name": "Producto", "leaderEmail": "gloriana@mawi.io", "sortOrder": 4 },
+    { "key": "ingenieria", "name": "Ingeniería", "leaderEmail": "adrian@mawi.io", "sortOrder": 5 }
+  ],
   "members": [
     { "displayName": "Lorena Pulido", "slackUserId": "U082XU134KW", "email": "lorena@mawi.io", "areaKey": "ventas", "teamKey": "ventas", "isLeader": true },
     { "displayName": "María Paula Arango", "slackUserId": "U0BF321NYV8", "areaKey": "ventas", "teamKey": "ventas" },
@@ -11,11 +18,11 @@
     { "displayName": "Ángel Uray", "slackUserId": "U06G3TB04DD", "areaKey": "ingenieria", "teamKey": "ingenieria" },
     { "displayName": "Owen", "slackUserId": "U07NQ2HC11Q", "areaKey": "ingenieria", "teamKey": "ingenieria" },
     { "displayName": "Bairon Horna", "slackUserId": "U0A2V01PRDY", "areaKey": "ingenieria", "teamKey": "ingenieria" },
-    { "displayName": "Gloriana González", "slackUserId": "U046LU6A6AU", "email": "glori@mawi.io", "areaKey": "producto", "teamKey": "producto", "isLeader": true },
+    { "displayName": "Gloriana González", "slackUserId": "U046LU6A6AU", "email": "gloriana@mawi.io", "areaKey": "producto", "teamKey": "producto", "isLeader": true },
     { "displayName": "Gustavo", "slackUserId": "U0BCSMWC6KW", "areaKey": "producto", "teamKey": "producto" },
     { "displayName": "Moni", "slackUserId": "U0AFGQD8Q4W", "areaKey": "customer", "teamKey": "onboarding" },
     { "displayName": "Jay", "slackUserId": "U0ABZ16HCHF", "areaKey": "customer", "teamKey": "onboarding" },
-    { "displayName": "Gaby", "slackUserId": "U08MYHKQB34", "email": "gaby@mawi.io", "areaKey": "customer", "teamKey": "cs", "isLeader": true },
+    { "displayName": "Gaby", "slackUserId": "U08MYHKQB34", "email": "gabriela@mawi.io", "areaKey": "customer", "teamKey": "cs", "isLeader": true },
     { "displayName": "Mayela Herrera", "slackUserId": "U0BTGL60ZP1", "areaKey": "customer", "teamKey": "cs" }
   ]
 }

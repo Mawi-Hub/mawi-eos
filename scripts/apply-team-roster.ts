@@ -1,7 +1,8 @@
-// Carga el roster del check-in semanal (config/team-roster.json): persona,
-// Slack ID, área de reporte y equipo de preguntas. Por defecto SIMULA; con
-// --apply escribe. Solo toca ReportMember: no cambia áreas, roles ni la
-// selección del trimestre. Quien no está en el archivo no se borra.
+// Carga el roster del check-in semanal (config/team-roster.json): áreas de
+// reporte que falten y personas (Slack ID, área y equipo de preguntas). Por
+// defecto SIMULA; con --apply escribe. Un área existente no se modifica (ni su
+// líder); no toca roles ni la selección del trimestre. Quien no está en el
+// archivo no se borra.
 //
 //   npx tsx scripts/apply-team-roster.ts config/team-roster.json
 //   npx tsx scripts/apply-team-roster.ts config/team-roster.json --apply
@@ -10,17 +11,27 @@ import { readFileSync } from "node:fs";
 import { prisma } from "../src/lib/db";
 import { isTeamKey } from "../src/lib/checkin/teams";
 
+type Area = { key: string; name: string; leaderEmail?: string | null; sortOrder?: number };
 type Member = { displayName: string; slackUserId: string; email?: string; areaKey: string; teamKey: string; isLeader?: boolean };
 
 async function main() {
   const file = process.argv[2];
   if (!file || file.startsWith("--")) throw new Error("Uso: apply-team-roster.ts <archivo.json> [--apply]");
   const apply = process.argv.includes("--apply");
-  const { members } = JSON.parse(readFileSync(file, "utf8")) as { members: Member[] };
+  const { areas: areaConfig = [], members } = JSON.parse(readFileSync(file, "utf8")) as { areas?: Area[]; members: Member[] };
   const host = (() => { try { return new URL(process.env.DATABASE_URL ?? "").host; } catch { return "(desconocido)"; } })();
   console.log(`Base: ${host} · modo: ${apply ? "ESCRIBIR" : "simulación"}\n`);
 
-  const areas = new Map((await prisma.reportArea.findMany()).map((a) => [a.key, a]));
+  const areas = new Map<string, { id: string }>((await prisma.reportArea.findMany()).map((a) => [a.key, a]));
+  for (const a of areaConfig) {
+    if (areas.has(a.key)) continue;
+    const leader = a.leaderEmail ? await prisma.user.findUnique({ where: { email: a.leaderEmail }, select: { id: true } }) : null;
+    if (a.leaderEmail && !leader) console.log(`  ⚠ área ${a.key}: no hay usuario del app con ${a.leaderEmail} (queda sin líder)`);
+    console.log(`  • crear área ${a.key} (${a.name}) · líder ${a.leaderEmail ?? "sin asignar"}`);
+    const data = { key: a.key, name: a.name, sortOrder: a.sortOrder ?? 0, leaderId: leader?.id ?? null };
+    // En simulación se finge el área para validar las personas que dependen de ella.
+    areas.set(a.key, apply ? await prisma.reportArea.create({ data }) : { id: `dry:${a.key}` });
+  }
   const seen = new Set<string>();
   let problems = 0;
   for (const m of members) {
