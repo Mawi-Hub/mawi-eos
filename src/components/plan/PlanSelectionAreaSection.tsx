@@ -44,7 +44,7 @@ export function PlanSelectionAreaSection({ planId, name, subtitle, ownerName, ro
         {principalRock && (
           <div className="flex min-w-[16rem] items-center gap-3 text-xs">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-gray-500">
+              <div className="break-words text-gray-500">
                 <span className="font-semibold uppercase tracking-wide">Rock</span> · {principalRock.title}
               </div>
               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200">
@@ -78,6 +78,7 @@ export function PlanSelectionAreaSection({ planId, name, subtitle, ownerName, ro
                   const nameCell = (
                     <>
                       <div className={`font-medium ${row.pendingConfig ? "text-gray-500" : "text-gray-900"}`}>{row.label}</div>
+                      {row.group && <div className="text-[11px] font-medium text-mawi-600">{row.group}</div>}
                       <div className="text-xs text-gray-400">
                         {row.reportOwnerName ?? "Sin owner"}
                         {!row.pendingConfig && ` · ${row.periodLabel}`}

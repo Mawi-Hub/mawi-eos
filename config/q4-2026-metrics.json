@@ -95,7 +95,7 @@
     {
       "areaKey": "customer",
       "order": 1,
-      "label": "Onboarding: cuentas nuevas con primer valor en 14 días",
+      "label": "Cuentas nuevas con primer valor en 14 días",
       "proposal": "customer_first_value_14d",
       "definition": {
         "unit": "%",
@@ -104,13 +104,14 @@
         "source": "por definir con Gaby y Producto",
         "numerator": "cuentas nuevas con presupuesto con gastos asignados y primer reporte al ejecutivo en ≤14 días",
         "denominator": "cuentas nuevas cuya ventana de 14 días ya terminó",
-        "reference": "60%"
+        "reference": "60%",
+        "group": "Onboarding"
       }
     },
     {
       "areaKey": "customer",
       "order": 2,
-      "label": "Onboarding: Days to Activate",
+      "label": "Days to Activate",
       "metric": "Days to Activate",
       "definition": {
         "unit": "days",
@@ -119,13 +120,14 @@
         "source": "manual (Gaby)",
         "target": 30,
         "targetText": "≤ 30 días (hoy 31)",
-        "targetConfirmed": true
+        "targetConfirmed": true,
+        "group": "Onboarding"
       }
     },
     {
       "areaKey": "customer",
       "order": 3,
-      "label": "Success: churn bruto de MRR",
+      "label": "Churn bruto de MRR",
       "definition": {
         "unit": "%",
         "frequency": "monthly",
@@ -133,7 +135,8 @@
         "source": "ChartMogul (cancelaciones + reducciones / MRR del mes anterior)",
         "target": 3,
         "targetText": "≤ 3% mensual",
-        "targetConfirmed": true
+        "targetConfirmed": true,
+        "group": "Success"
       },
       "metric": "Churn bruto de MRR",
       "replacesProposal": "customer_gross_mrr_churn",
@@ -151,14 +154,15 @@
     {
       "areaKey": "customer",
       "order": 4,
-      "label": "Success: MRR prechurn recuperado",
+      "label": "MRR prechurn recuperado",
       "proposal": "customer_prechurn_mrr_recovered",
       "definition": {
         "unit": "$",
         "frequency": "monthly",
         "direction": "above",
         "source": "por definir (registro de cuentas en riesgo)",
-        "notes": "MRR de cuentas marcadas en riesgo que siguen activas al cierre del mes."
+        "notes": "MRR de cuentas marcadas en riesgo que siguen activas al cierre del mes.",
+        "group": "Success"
       }
     },
     {

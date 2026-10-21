@@ -485,7 +485,7 @@ export default async function L10Page() {
                 <span className="text-xs font-semibold text-gray-900">{a.name}</span>
                 {a.rockStatus && <span className={`h-2 w-2 rounded-full ${rockStatus(a.rockStatus).dot}`} title={`Rock: ${rockStatus(a.rockStatus).label}`} />}
               </div>
-              <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">{a.rockTitle ?? "Rock por definir"}</p>
+              <p className="mt-0.5 text-[11px] text-gray-500">{a.rockTitle ?? "Rock por definir"}</p>
               <div className="mt-1.5 flex flex-wrap gap-1 text-[10px]">
                 {a.red > 0 ? <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-red-700">{a.red} métrica{a.red === 1 ? "" : "s"} fuera</span> : <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-emerald-700">métricas ok</span>}
                 {a.issues > 0 && <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-gray-600">{a.issues} IDS</span>}

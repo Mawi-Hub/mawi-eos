@@ -64,10 +64,10 @@ export async function ceoExceptions(now = new Date()): Promise<CeoExceptions> {
     redMetrics: overview.areas.flatMap((a) =>
       a.metrics
         .filter((m) => m.signal === "off_track" || m.signal === "riesgo")
-        .map((m) => ({ areaName: a.name, label: m.label, valueText: m.valueText, targetText: m.targetText, signal: m.signal! })),
+        .map((m) => ({ areaName: m.group ? `${a.name} · ${m.group}` : a.name, label: m.label, valueText: m.valueText, targetText: m.targetText, signal: m.signal! })),
     ),
     missingMetrics: overview.areas.flatMap((a) =>
-      a.metrics.filter((m) => !m.pendingConfig && m.valueText === null).map((m) => ({ areaName: a.name, label: m.label, owner: m.reportOwnerName })),
+      a.metrics.filter((m) => !m.pendingConfig && m.valueText === null).map((m) => ({ areaName: m.group ? `${a.name} · ${m.group}` : a.name, label: m.label, owner: m.reportOwnerName })),
     ),
     overdueCommitments: commitments.map((c) => ({
       id: c.id,

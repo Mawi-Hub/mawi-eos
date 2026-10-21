@@ -89,11 +89,13 @@ export default async function DashboardPage() {
           ) : (
             <ul className="space-y-1.5">
               {x.redMetrics.map((m) => (
-                <li key={`${m.areaName}:${m.label}`} className="flex items-baseline justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${SIGNAL_DOT[m.signal as keyof typeof SIGNAL_DOT] ?? "bg-gray-300"}`} aria-hidden="true" />
-                    <span className="truncate text-gray-800">{m.label}</span>
-                    <span className="shrink-0 text-xs text-gray-400">{m.areaName}</span>
+                <li key={`${m.areaName}:${m.label}`} className="flex items-start justify-between gap-3">
+                  <span className="flex min-w-0 items-start gap-1.5">
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SIGNAL_DOT[m.signal as keyof typeof SIGNAL_DOT] ?? "bg-gray-300"}`} aria-hidden="true" />
+                    <span className="break-words text-gray-800">
+                      {m.label}
+                      <span className="block text-xs text-gray-400">{m.areaName}</span>
+                    </span>
                   </span>
                   <span className="shrink-0 text-gray-900">
                     {m.valueText} <span className="text-xs text-gray-400">/ {m.targetText}</span>

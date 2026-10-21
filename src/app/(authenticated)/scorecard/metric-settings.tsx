@@ -7,6 +7,7 @@ import { Settings2 } from "lucide-react";
 export type MetricSettingsValue = {
   selectionId: string;
   label: string;
+  group: string | null;
   description: string | null;
   numerator: string | null;
   denominator: string | null;
@@ -86,6 +87,7 @@ export function MetricSettings({ value, leaders }: { value: MetricSettingsValue;
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         label: v.label,
+        group: v.group,
         description: v.description,
         numerator: v.numerator,
         denominator: v.denominator,
@@ -136,9 +138,13 @@ export function MetricSettings({ value, leaders }: { value: MetricSettingsValue;
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm font-medium text-gray-700 md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
                 Nombre
                 <input value={v.label} onChange={(e) => up("label", e.target.value)} className={field} />
+              </label>
+              <label className="block text-sm font-medium text-gray-700">
+                Subárea (opcional)
+                <input value={v.group ?? ""} onChange={(e) => up("group", e.target.value || null)} placeholder="Ej.: Onboarding, Success, Soporte" className={field} />
               </label>
               <label className="block text-sm font-medium text-gray-700 md:col-span-2">
                 Qué mide

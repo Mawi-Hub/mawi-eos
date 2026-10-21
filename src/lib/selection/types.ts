@@ -4,6 +4,8 @@ import type { DataState } from "@/lib/metrics/dataState";
 // falta se muestra como pendiente de configuración, no se inventa.
 export type MetricDefinition = {
   label?: string;
+  // Subárea dentro del área (p. ej. Onboarding, Success o Soporte en Customer).
+  group?: string;
   description?: string;
   unit?: string;
   frequency?: "weekly" | "biweekly" | "monthly";
@@ -28,7 +30,10 @@ export type SelectionMetricView = {
   areaKey: string;
   areaName: string;
   sortOrder: number;
+  // Nombre del KPI, sin la subárea.
   label: string;
+  // Subárea (Onboarding, Success, Soporte…) o null.
+  group: string | null;
   approvalStatus: "pending" | "approved";
   // Sin métrica real detrás, o sin aprobar: se muestra como configuración
   // por resolver, nunca como resultado.

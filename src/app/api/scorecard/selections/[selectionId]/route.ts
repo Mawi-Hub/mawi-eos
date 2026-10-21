@@ -14,6 +14,7 @@ const SOURCES = ["manual", "hubspot", "chartmogul", "posthog"];
 
 type Body = {
   label?: string;
+  group?: string | null;
   description?: string | null;
   numerator?: string | null;
   denominator?: string | null;
@@ -62,6 +63,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ selection
     else next[key] = value;
   };
   set("label", text(body.label, 120));
+  set("group", text(body.group, 40));
   set("description", text(body.description, 600));
   set("numerator", text(body.numerator));
   set("denominator", text(body.denominator));

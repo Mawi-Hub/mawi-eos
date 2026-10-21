@@ -167,7 +167,7 @@ export default async function SemanaPage({ searchParams }: { searchParams: Promi
           <div key={g.key} className="space-y-3">
             <div className="flex items-baseline gap-2">
               <h3 className="font-semibold text-gray-900">{g.name}</h3>
-              {g.rock && <span className="truncate text-xs text-gray-400">Rock: {g.rock.title}</span>}
+              {g.rock && <span className="text-xs text-gray-400">Rock: {g.rock.title}</span>}
             </div>
             {g.rows.map((r) => {
               const team = teamConfig(r.teamKey);
