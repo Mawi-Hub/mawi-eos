@@ -5,8 +5,8 @@
   "areas": [
     { "key": "ventas", "name": "Ventas", "leaderEmail": "lorena@mawi.io", "alternateEmail": null, "sortOrder": 1 },
     { "key": "growth", "name": "Growth", "leaderEmail": "fede@mawi.io", "alternateEmail": null, "sortOrder": 2 },
-    { "key": "customer", "name": "Customer", "leaderEmail": "gaby@mawi.io", "alternateEmail": null, "sortOrder": 3 },
-    { "key": "producto", "name": "Producto", "leaderEmail": "glori@mawi.io", "alternateEmail": null, "sortOrder": 4 },
+    { "key": "customer", "name": "Customer", "leaderEmail": "gabriela@mawi.io", "alternateEmail": null, "sortOrder": 3 },
+    { "key": "producto", "name": "Producto", "leaderEmail": "gloriana@mawi.io", "alternateEmail": null, "sortOrder": 4 },
     { "key": "ingenieria", "name": "Ingeniería", "leaderEmail": "adrian@mawi.io", "alternateEmail": null, "sortOrder": 5 }
   ],
   "members": [],
