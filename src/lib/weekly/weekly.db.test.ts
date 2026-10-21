@@ -176,6 +176,11 @@ test("el borrador usa solo lo visible y el envío es único", { skip }, async ()
   assert.equal(calls[1].threadTs, "ts-1");
   await assert.rejects(sendSummary(ctx.period, "actor", { slack, channel: "C-TEST" }), /ya se envió/);
 
+  // Las respuestas en el hilo del resumen no se toman como check-ins.
+  const { prismaIsReportThread } = await import("@/lib/integrations/slackEvents");
+  assert.equal(await prismaIsReportThread("C-TEST", "ts-1"), true);
+  assert.equal(await prismaIsReportThread("C-TEST", "otro-ts"), false);
+
   const again = await generateDraft(ctx.period, { deps: { claude: async () => null } });
   assert.equal(again.status, "already_sent", "un resumen enviado no se regenera");
 });

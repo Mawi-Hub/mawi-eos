@@ -92,16 +92,20 @@ export type EventProcessors = {
   checkin_delete: (event: SlackMessageEvent) => Promise<void>;
 };
 
-// ¿Este hilo cuelga de un resumen de management publicado? Las respuestas y
-// reacciones de la gente a ese resumen no son check-ins: se ignoran sin gastar
-// una llamada a Claude ni arriesgar que un comentario se guarde como aporte.
+// ¿Este hilo cuelga de un resumen publicado (de management o el semanal de
+// empresa)? Las respuestas de la gente a ese resumen no son check-ins: se
+// ignoran sin gastar una llamada a Claude ni arriesgar que un comentario se
+// guarde como aporte.
 export async function prismaIsReportThread(channelId: string, threadTs: string): Promise<boolean> {
   const { prisma } = await import("@/lib/db");
-  const found = await prisma.reportDelivery.findFirst({
-    where: { destination: "slack", providerChannel: channelId, OR: [{ providerMessageId: threadTs }, { threadTs }] },
-    select: { id: true },
-  });
-  return found !== null;
+  const [delivery, weekly] = await Promise.all([
+    prisma.reportDelivery.findFirst({
+      where: { destination: "slack", providerChannel: channelId, OR: [{ providerMessageId: threadTs }, { threadTs }] },
+      select: { id: true },
+    }),
+    prisma.weeklySummary.findFirst({ where: { channel: channelId, slackTs: threadTs }, select: { id: true } }),
+  ]);
+  return delivery !== null || weekly !== null;
 }
 
 export type ReceiveDeps = {
