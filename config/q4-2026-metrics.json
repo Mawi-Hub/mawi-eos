@@ -220,6 +220,31 @@
         "denominator": "propuestas que llegaron a revisión",
         "reference": "80%"
       }
+    },
+    {
+      "areaKey": "customer",
+      "order": 5,
+      "label": "Tiempo promedio de resolución de tickets",
+      "metric": "Tiempo promedio de resolución de tickets",
+      "createMetric": {
+        "unit": "hours",
+        "frequency": "weekly",
+        "dataSource": "manual",
+        "targetDirection": "below",
+        "ownerEmail": "gabriela@mawi.io",
+        "category": "customer_success"
+      },
+      "definition": {
+        "group": "Soporte",
+        "unit": "hours",
+        "frequency": "weekly",
+        "direction": "below",
+        "source": "Help Scout (carga manual semanal)",
+        "numerator": "horas desde que se abre hasta que se resuelve cada ticket",
+        "denominator": "tickets resueltos en la semana",
+        "description": "Promedio de horas para resolver un ticket de soporte, de la apertura al cierre.",
+        "notes": "Meta por definir con Gaby y Carlos."
+      }
     }
   ]
 }
