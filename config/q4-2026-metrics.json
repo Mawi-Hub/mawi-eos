@@ -12,13 +12,13 @@
       "label": "Show rate",
       "metric": "Show Rate",
       "setMetric": {
-        "dataSource": "hubspot"
+        "dataSource": "manual"
       },
       "definition": {
         "unit": "%",
         "frequency": "monthly",
         "direction": "above",
-        "source": "HubSpot",
+        "source": "Manual (Lorena) hasta que HubSpot registre el resultado de cada demo",
         "numerator": "demos realizadas",
         "denominator": "demos agendadas para el período",
         "target": 65,
@@ -32,13 +32,13 @@
       "label": "Conversión demo → cierre",
       "metric": "Close Rate",
       "setMetric": {
-        "dataSource": "hubspot"
+        "dataSource": "manual"
       },
       "definition": {
         "unit": "%",
         "frequency": "monthly",
         "direction": "above",
-        "source": "HubSpot",
+        "source": "Manual (Lorena) hasta que HubSpot registre el resultado de cada demo",
         "numerator": "ventas ganadas del mes",
         "denominator": "demos realizadas del mes",
         "target": 25,

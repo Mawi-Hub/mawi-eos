@@ -32,3 +32,13 @@ test("una cita reprogramada no se cuenta dos veces", () => {
   const r = run([m("1", "RESCHEDULED"), m("1b", "COMPLETED")]);
   assert.deepEqual(r.showRateDetail, { numerator: 1, denominator: 1 });
 });
+
+test("demos sin resultado registrado no bajan el show rate: se informan aparte", () => {
+  const r = run([m("1", "SCHEDULED"), m("2", ""), m("3", "COMPLETED"), m("4", "NO_SHOW")], 2);
+  assert.deepEqual(r.showRateDetail, { numerator: 1, denominator: 2 });
+  assert.equal(r.unrecordedDemos, 2);
+  const none = run([m("1", "SCHEDULED"), m("2", "")], 1);
+  assert.equal(none.showRate, null, "sin resultados registrados: sin muestra, nunca 0%");
+  assert.equal(none.closeRate, null);
+  assert.equal(none.unrecordedDemos, 2);
+});
