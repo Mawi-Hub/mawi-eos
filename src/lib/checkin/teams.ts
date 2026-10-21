@@ -30,6 +30,16 @@ export type TeamConfig = {
   numbers: NumberField[];
 };
 
+export const ENERGY_QUESTION = "¿Cómo llegás a esta semana? Tu energía del 1 al 5";
+export const ENERGY_REASON_QUESTION = "¿Por qué? (opcional)";
+export const ENERGY_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: "1 · Muy baja" },
+  { value: 2, label: "2 · Baja" },
+  { value: 3, label: "3 · Normal" },
+  { value: 4, label: "4 · Buena" },
+  { value: 5, label: "5 · Excelente" },
+];
+
 export const BLOCKER_QUESTION = "¿Qué te está frenando y de quién necesitás ayuda?";
 export const COMMITMENT_QUESTION = "¿A qué te comprometés la próxima semana?";
 

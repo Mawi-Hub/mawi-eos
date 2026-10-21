@@ -29,6 +29,11 @@ reemplaza el resumen del viernes. La ruta sigue existiendo para un envío manual
 - **Números de sistemas**: el formulario muestra, precargadas, las métricas de la
   selección trimestral del área (filtradas por prefijo para Soporte, Onboarding y
   Success). No se piden.
+- **Energía**: la primera pregunta es la energía de la semana (1–5, obligatoria)
+  y un "¿por qué?" opcional. El número se guarda en EOS solo para mostrar el
+  promedio del equipo y cuántas personas están en 1–2 (página Semana; en el
+  resumen público, solo el promedio y con 3 respuestas o más). El "por qué" va
+  únicamente a Notion (columnas Energía y Por qué); EOS no lo guarda.
 - **Compromiso anterior**: si la persona dejó uno la semana pasada, el
   formulario exige marcar Cumplido / Parcial / No se cumplió.
 - **Guardado**: `/api/checkin/interactivity` (Slack Interactivity) verifica la

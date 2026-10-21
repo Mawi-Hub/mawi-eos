@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { draftToParts, parseNarrative, renderWeeklyDraft, THREAD_MARKER, type WeekData } from "./render";
+import { draftToParts, parseNarrative, renderWeeklyDraft, summarizeEnergy, THREAD_MARKER, type WeekData } from "./render";
 
 const base: WeekData = {
   periodStart: new Date("2026-10-12T06:00:00Z"),
@@ -19,6 +19,7 @@ const base: WeekData = {
   ],
   responded: 1,
   expected: 3,
+  energy: null,
   management: { meetingDate: "2026-10-16T15:30:00Z", agreements: [{ id: "c1", action: "Publicar rúbrica", ownerName: "Lorena", dueDate: "2026-10-23", status: "open" }], decisions: [] },
   detailUrl: "https://eos.test/semana?w=2026-10-12",
 };
@@ -63,4 +64,11 @@ test("el borrador editado se parte en mensaje principal e hilo", () => {
   const parts = draftToParts(`*Hola*\n\nlinea\n\n${THREAD_MARKER}\n\n*Compromisos*\n• a`);
   assert.deepEqual(parts, ["*Hola*\n\nlinea", "*Compromisos*\n• a"]);
   assert.equal(draftToParts("solo principal").length, 1);
+});
+
+test("la energía se muestra solo agregada y con muestra suficiente", () => {
+  assert.deepEqual(summarizeEnergy([4, 2, 5, null, 1]), { average: 3, count: 4, low: 2 });
+  assert.equal(summarizeEnergy([null, undefined]), null);
+  assert.match(renderWeeklyDraft({ ...base, energy: { average: 3.8, count: 5, low: 1 } }, null), /Energía del equipo: 3,8\/5\./);
+  assert.doesNotMatch(renderWeeklyDraft({ ...base, energy: { average: 4, count: 2, low: 0 } }, null), /Energía/, "con menos de 3 respuestas no se muestra");
 });

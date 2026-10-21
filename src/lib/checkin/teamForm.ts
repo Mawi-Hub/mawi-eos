@@ -4,7 +4,7 @@
 
 import { neutralizeSlack, oneLine } from "@/lib/report/privacy";
 import { crIsoDate } from "@/lib/time/costaRica";
-import { BLOCKER_QUESTION, COMMITMENT_QUESTION, PREVIOUS_STATUS_LABEL, type TeamConfig } from "./teams";
+import { BLOCKER_QUESTION, COMMITMENT_QUESTION, ENERGY_OPTIONS, ENERGY_QUESTION, ENERGY_REASON_QUESTION, PREVIOUS_STATUS_LABEL, type TeamConfig } from "./teams";
 
 export const OPEN_ACTION_ID = "team_checkin_open";
 export const MODAL_CALLBACK_ID = "team_checkin";
@@ -16,6 +16,7 @@ const SHORT_MAX = 300;
 export type SystemNumber = { label: string; valueText: string | null; targetText: string | null; periodLabel: string };
 
 export type ExistingAnswers = {
+  energy: number | null;
   result: string;
   learning: string;
   extra: string | null;
@@ -36,6 +37,9 @@ export type ModalInput = {
 };
 
 export type Submission = {
+  energy: number;
+  // Solo viaja a Notion; EOS no lo guarda.
+  energyReason: string | null;
   result: string;
   learning: string;
   extra: string | null;
@@ -138,6 +142,24 @@ export function buildModal(input: ModalInput): Record<string, unknown> {
     { type: "divider" },
   ];
 
+  // Lo personal primero: cómo llega la persona a la semana.
+  const energyOptions = ENERGY_OPTIONS.map((o) => ({ text: plain(o.label), value: String(o.value) }));
+  const energyInitial = existing?.energy ? energyOptions.find((o) => o.value === String(existing.energy)) : undefined;
+  blocks.push({
+    type: "input",
+    block_id: "energy",
+    label: plain(ENERGY_QUESTION),
+    hint: plain("Solo se comparte el promedio del equipo, nunca tu número."),
+    element: { type: "radio_buttons", action_id: "v", options: energyOptions, ...(energyInitial ? { initial_option: energyInitial } : {}) },
+  });
+  blocks.push(
+    textInput("energy_reason", ENERGY_REASON_QUESTION, {
+      optional: true,
+      max: 500,
+      placeholder: "Va a la base de check-ins de Notion, no al resumen de la empresa.",
+    }),
+  );
+
   if (input.previousCommitment) {
     const initial = existing?.previousCommitmentStatus ?? null;
     const options = (["done", "partial", "not_done"] as const).map((v) => ({ text: plain(PREVIOUS_STATUS_LABEL[v]), value: v }));
@@ -224,6 +246,10 @@ export function parseSubmission(
   if (!learning || learning.length < 3) errors.learning = "Contanos qué aprendiste.";
   if (!commitment || commitment.length < 3) errors.commitment = "Dejá un compromiso para la próxima semana.";
 
+  const energyRaw = Number(values.energy?.v?.selected_option?.value);
+  const energy = Number.isInteger(energyRaw) && energyRaw >= 1 && energyRaw <= 5 ? energyRaw : null;
+  if (energy === null) errors.energy = "Elegí tu energía del 1 al 5.";
+
   let previous: Submission["previousCommitmentStatus"] = null;
   if (hasPrevious) {
     const v = values.prev?.v?.selected_option?.value;
@@ -250,6 +276,8 @@ export function parseSubmission(
   return {
     ok: true,
     submission: {
+      energy: energy!,
+      energyReason: text("energy_reason", 500),
       result: result!,
       learning: learning!,
       extra: team.extra ? text("extra") : null,

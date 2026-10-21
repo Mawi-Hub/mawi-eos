@@ -878,6 +878,9 @@ model TeamCheckin {
   areaKey     String?  @map("area_key")
   teamKey     String   @map("team_key")
   authorName  String   @map("author_name")
+  // Energía de la semana (1–5). Solo se usa agregada (promedio del equipo y
+  // cuántas personas están en 1–2); el "por qué" no se guarda en EOS, va a Notion.
+  energy      Int?
   result      String
   learning    String
   extra       String?
