@@ -719,7 +719,8 @@ const SAVED_NOTE = "💾 _Borrador guardado._";
 
 export function renderIntro(firstName: string, areaName: string): string {
   return (
-    `¡Hola ${safe(firstName)}! 👋 Preparemos *${safe(areaName)}* para la reunión de management del viernes.\n` +
+    `¡Hola ${safe(firstName)}! 👋 Preparemos *${safe(areaName)}* para la reunión de management de hoy.\n` +
+    `Cerrala antes de las *9:00* (los IDS se votan antes de empezar); el pre-read sale a las 9:15.\n` +
     `Son 5 bloques cortos y ya te traigo lo que sabemos. Podés escribir *pendiente* en cualquier bloque para saltarlo: ` +
     `no invento respuestas ni publico nada. Cada bloque queda guardado como borrador.`
   );
@@ -728,9 +729,9 @@ export function renderIntro(firstName: string, areaName: string): string {
 function renderRockPrompt(rock: { title: string; status: string }): string {
   return (
     `*1/5 · Rock principal* 🪨\n*${safe(rock.title)}* — estado actual: ${ROCK_EMOJI[rock.status] ?? "⚪"} ${ROCK_LABEL[rock.status] ?? rock.status}\n\n` +
-    `¿Cómo va de verdad? Respondé con el número y el hito real que alcanzaste:\n` +
+    `¿Cómo va de verdad? Respondé con el número, el hito real que alcanzaste (con su evidencia) y el próximo hito:\n` +
     `*1)* En camino   *2)* En riesgo   *3)* Completado\n` +
-    `_Ejemplo: "1 — cerramos la integración con X"._ Si se desvió, contame qué cambió y cuál es el próximo paso.`
+    `_Ejemplo: "1 — cerramos la integración con X (3 clientes ya la usan). Próximo paso: piloto con Y el 30"._ Si se desvió, contame qué cambió.`
   );
 }
 

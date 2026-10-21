@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireCronAuth } from "@/lib/cronAuth";
+import { crIsoDate, crStartOfDay } from "@/lib/time/costaRica";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +30,8 @@ export async function GET(request: Request) {
     }
 
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    // 00:00 de hoy en Costa Rica (el servidor corre en UTC).
+    const todayStart = crStartOfDay(now);
 
     // 1. Cerrar rezagadas: abiertas cuya fecha ya pasó.
     const stale = await prisma.l10Meeting.findMany({
@@ -50,25 +51,24 @@ export async function GET(request: Request) {
             closedAt: now,
             version: { increment: 1 },
             notes: m.notes
-              ? `${m.notes}\n\n(Cerrada automáticamente el ${todayStart.toISOString().split("T")[0]}.)`
-              : `Cerrada automáticamente el ${todayStart.toISOString().split("T")[0]}.`,
+              ? `${m.notes}\n\n(Cerrada automáticamente el ${crIsoDate(todayStart)}.)`
+              : `Cerrada automáticamente el ${crIsoDate(todayStart)}.`,
           },
         });
       }
     }
 
     // 2. Abrir la de hoy. Reutiliza cualquier reunión sin cerrar sin importar su
-    // fecha: el check-in del jueves ya pudo haber creado una para colgarle los
+    // fecha: un check-in de líderes ya pudo haber creado una para colgarle los
     // challenges, y crear otra acá dejaría esos issues huérfanos.
     const existing = await prisma.l10Meeting.findFirst({
       where: { quarterId: quarter.id, status: { not: "completed" } },
       orderBy: { date: "desc" },
     });
 
-    // Pre-read cerrado la tarde anterior, junto con el check-in de KPIs.
-    const prereadDeadline = new Date(todayStart);
-    prereadDeadline.setDate(prereadDeadline.getDate() - 1);
-    prereadDeadline.setHours(17, 0, 0, 0);
+    // La preparación de los managers se hace el mismo viernes (08:00): todo
+    // debe estar cargado a las 09:00 CR, antes del pre-read de las 09:15.
+    const prereadDeadline = new Date(todayStart.getTime() + 9 * 60 * 60 * 1000);
 
     let opened;
     if (dryRun) {
@@ -76,8 +76,8 @@ export async function GET(request: Request) {
     } else if (existing) {
       opened = await prisma.l10Meeting.update({
         where: { id: existing.id },
-        // La fecha pasa a ser la de hoy: si la creó el check-in del jueves,
-        // la reunión es la de este viernes.
+        // La fecha pasa a ser la de hoy: si la creó un check-in anterior, la
+        // reunión es la de este viernes.
         data: { date: now, status: "in_progress", phase: "preread", prereadDeadline },
       });
     } else {

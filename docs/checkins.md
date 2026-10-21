@@ -1,4 +1,73 @@
-# Check-in semanal del equipo
+# Check-in semanal y resumen de empresa
+
+## Calendario (hora de Costa Rica)
+
+| Cuándo | Qué | Ruta (Vercel Cron) |
+|---|---|---|
+| Jue 15:00 | DM a cada persona del roster con el botón del formulario de su equipo | `/api/checkin/team?step=open` |
+| Vie 07:00 | Sincroniza ChartMogul, HubSpot, PostHog y KPIs del plan | `/api/sync/cron` |
+| Vie 07:00 | Abre la L10 del día (pre-read hasta las 09:00) | `/api/l10/cron` |
+| Vie 08:00 | Recordatorio a quien no respondió | `/api/checkin/team?step=remind` |
+| Vie 08:00 | Preparación de los managers (Rock, métricas, wins del equipo, acuerdos, IDS) | `/api/checkin/kpi` |
+| Vie 08:45 | Aviso a los managers con algo pendiente, con lo que falta | `/api/checkin/kpi/nudge` |
+| Vie 09:15 | Pre-read de la L10 | `/api/l10/digest` |
+| Vie 12:00 | Borrador del resumen semanal + DM a quien facilita | `/api/weekly/cron` |
+| Vie ≤15:00 | Quien facilita revisa en **EOS → Semana** y envía a `#weekly-check-ins` | (manual) |
+
+El resumen de los lunes (`/api/checkin/digest`) ya no está programado: lo
+reemplaza el resumen del viernes. La ruta sigue existiendo para un envío manual.
+
+## Check-in del equipo (formulario de Slack)
+
+- **Quién**: `ReportMember` verificado, vigente, con `slackUserId` y `teamKey`.
+  El roster vive en `config/team-roster.json` y se carga con
+  `npx tsx scripts/apply-team-roster.ts config/team-roster.json [--apply]`.
+- **Preguntas**: `src/lib/checkin/teams.ts`. Todos los equipos tienen el mismo
+  esqueleto — resultado (con evidencia), aprendizaje, una pregunta opcional del
+  equipo, números personales sin fuente, bloqueo/ayuda y compromiso para la
+  próxima semana — redactado según el Rock y los KPIs del área.
+- **Números de sistemas**: el formulario muestra, precargadas, las métricas de la
+  selección trimestral del área (filtradas por prefijo para Soporte, Onboarding y
+  Success). No se piden.
+- **Compromiso anterior**: si la persona dejó uno la semana pasada, el
+  formulario exige marcar Cumplido / Parcial / No se cumplió.
+- **Guardado**: `/api/checkin/interactivity` (Slack Interactivity) verifica la
+  firma, valida, guarda `TeamCheckin` y lo refleja en `CheckinEvidence`
+  (resultado = win, bloqueo = reto) para la preparación de líderes y el resumen
+  de management. Después actualiza el DM ("Recibimos tu check-in · Editar") y
+  copia a Notion (`NOTION_DATABASE_ID`, columnas Área, Win, Aprendizaje, Reto,
+  Compromiso, Compromiso anterior, Números; solo se escriben las que existen).
+- Se puede editar hasta que se publique el resumen; cada edición guarda una revisión.
+
+## Página Semana (`/semana`)
+
+Participación (quién falta), respuestas por área, acuerdos/decisiones de la L10
+cerrada esa semana y el borrador del resumen. CEO o facilitador pueden ocultar
+o destacar respuestas, ocultar acuerdos, regenerar o editar el texto y enviarlo.
+Lo oculto no le llega a Claude ni a Slack. Los IDS de management nunca se
+publican: solo los acuerdos y resúmenes compartibles aprobados al cerrar la L10.
+El envío usa `WEEKLY_CHANNEL_ID` y es único por semana (reclamo atómico).
+Claude solo redacta "qué avanzó por área" y "lo que aprendimos"; números, Rocks,
+bloqueos, acuerdos y compromisos salen tal cual de los datos.
+
+Recomendado: cerrar la L10 con **"cerrar sin enviar"** (o dejar
+`REPORT_PUBLISH_ENABLED` apagado) para que el resumen de management no salga
+como un segundo mensaje: sus acuerdos ya entran en el resumen semanal.
+
+## Configuración de Slack
+
+- Interactivity & Shortcuts → Request URL: `https://<app>/api/checkin/interactivity`.
+- Scopes del bot: `chat:write`, `im:write`, `users:read`, `users:read.email`
+  (ya estaban) y el bot invitado a `#weekly-check-ins`.
+- Variables: `WEEKLY_CHANNEL_ID` (canal `#weekly-check-ins`), y las existentes
+  (`SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `CRON_SECRET`, `NOTION_*`,
+  `ANTHROPIC_API_KEY`, `REPORT_COMPANY_METRICS` para los números de empresa).
+- Apagar el Workflow de Slack que preguntaba en `#team-checkins` los jueves a
+  las 09:02. Si alguien igual responde ahí, se sigue capturando como antes.
+
+---
+
+# Historial: check-in por canal (`#team-checkins`)
 
 La pregunta de `#team-checkins` se programa en Slack: jueves a las 09:02,
 a partir del 10 de septiembre de 2026. Confirmar que el horario del workflow
@@ -48,7 +117,7 @@ en segundo plano con `after()`.
 
 ## Check-in de líderes v2 (`LEADER_CHECKIN_V2=1`)
 
-Con la bandera apagada el DM de los jueves 16:00 es el flujo de siempre
+Con la bandera apagada el DM de los viernes 08:00 es el flujo de siempre
 (win → métricas → challenges). Con `LEADER_CHECKIN_V2=1`, quien lidera (o es
 alterno de) un `ReportArea` recibe la preparación en cinco bloques, guardada en
 `LeaderPrep` de la reunión próxima/en curso; quien no tiene área recibe el flujo
@@ -83,10 +152,9 @@ evidencia ausente se rechazan); si falla, los atajos (números, "listo",
 fallida. El texto de los mensajes es dato: no cambia responsables, metas ni
 canales ni publica nada.
 
-## Resumen de los lunes
+## Resumen de los lunes (ya no programado)
 
-El cron existente en `vercel.json` sigue llamando `/api/checkin/digest` los
-lunes a las 08:00 de Costa Rica (`0 14 * * 1`). Resume el lunes–domingo
+`/api/checkin/digest` ya no está en `vercel.json`; se puede llamar a mano. Resume el lunes–domingo
 anterior y consulta también la semana previa como comparación.
 
 - Participación por personas distintas, sin asumir el tamaño del equipo.
