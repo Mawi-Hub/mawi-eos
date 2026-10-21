@@ -3,6 +3,7 @@
 // listas independientes por vista.
 
 import { prisma } from "@/lib/db";
+import { splitMetricLabel } from "./label";
 import { calculateStatus } from "@/lib/utils";
 import { crParts } from "@/lib/time/costaRica";
 import { describePeriod, formatMetricValue } from "@/lib/metrics/format";
@@ -65,7 +66,8 @@ export async function getQuarterSelection(quarterId: string, options: Options = 
     const metric = effectiveMetricId ? metricById.get(effectiveMetricId) ?? null : null;
     const approved = s.approvalStatus === "approved";
     const resolved = !!metric;
-    const label = s.displayLabel ?? definition?.label ?? metric?.name ?? s.planKpi?.name ?? s.proposalKey ?? "Métrica";
+    const rawLabel = s.displayLabel ?? definition?.label ?? metric?.name ?? s.planKpi?.name ?? s.proposalKey ?? "Métrica";
+    const { title: label, group } = splitMetricLabel(rawLabel, definition?.group);
 
     const entry = metric?.entries[0] ?? null;
     const frequency = definition?.frequency ?? metric?.frequency ?? "weekly";
@@ -111,6 +113,7 @@ export async function getQuarterSelection(quarterId: string, options: Options = 
       areaName: s.area.name,
       sortOrder: s.sortOrder,
       label,
+      group,
       approvalStatus: approved ? "approved" : "pending",
       pendingConfig: !resolved || !approved,
       planKpiId: s.planKpiId,

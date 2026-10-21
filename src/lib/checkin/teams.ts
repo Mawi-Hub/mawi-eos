@@ -137,10 +137,11 @@ export function isTeamKey(key: string): key is TeamKey {
   return key in TEAMS;
 }
 
-export function metricMatchesTeam(team: TeamConfig, label: string): boolean {
+// En Customer cada equipo ve solo su subárea (Onboarding, Success, Soporte).
+export function metricMatchesTeam(team: TeamConfig, group: string | null): boolean {
   if (team.metricPrefixes.length === 0) return true;
-  const l = label.toLowerCase();
-  return team.metricPrefixes.some((p) => l.startsWith(p.toLowerCase()));
+  const g = (group ?? "").toLowerCase();
+  return team.metricPrefixes.some((p) => g === p.toLowerCase());
 }
 
 export const PREVIOUS_STATUS_LABEL: Record<string, string> = {

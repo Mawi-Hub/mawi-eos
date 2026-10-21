@@ -106,7 +106,7 @@ export async function systemNumbersFor(team: TeamConfig, now: Date): Promise<Sys
   if (!quarter) return [];
   const selection = await getQuarterSelection(quarter.id, { now });
   return selection.rows
-    .filter((r) => r.areaKey === team.areaKey && metricMatchesTeam(team, r.label))
+    .filter((r) => r.areaKey === team.areaKey && metricMatchesTeam(team, r.group))
     .map((r) => ({
       label: r.label,
       valueText: r.pendingConfig ? null : r.valueText,

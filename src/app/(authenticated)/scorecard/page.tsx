@@ -230,14 +230,15 @@ export default async function ScorecardPage({
                     const def = row.definition ?? {};
                     return (
                       <tr key={row.selectionId} className={row.pendingConfig ? "text-gray-400" : "hover:bg-gray-50"}>
-                        <td className="max-w-[11rem] px-3 py-2 sm:max-w-xs">
-                          <div className="flex items-center gap-2">
-                            <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
-                            <span className={`truncate font-medium ${row.pendingConfig ? "text-gray-500" : "text-gray-900"}`} title={def.description ?? row.label}>
+                        <td className="min-w-[12rem] max-w-sm px-3 py-2">
+                          <div className="flex items-start gap-2">
+                            <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+                            <span className={`break-words font-medium ${row.pendingConfig ? "text-gray-500" : "text-gray-900"}`} title={def.description ?? undefined}>
                               {row.label}
                             </span>
                           </div>
                           <div className="ml-4 flex flex-wrap gap-x-2 text-[11px] text-gray-400">
+                            {row.group && <span className="font-medium text-mawi-600">{row.group} ·</span>}
                             <span>{row.reportOwnerName ?? row.metric?.ownerName ?? "Sin responsable"}</span>
                             {source && <span>· {source.label}</span>}
                             {row.pendingConfig && <span>· por configurar</span>}
@@ -285,6 +286,7 @@ export default async function ScorecardPage({
                               value={{
                                 selectionId: row.selectionId,
                                 label: row.label,
+                                group: row.group,
                                 description: def.description ?? null,
                                 numerator: def.numerator ?? null,
                                 denominator: def.denominator ?? null,

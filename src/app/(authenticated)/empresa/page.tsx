@@ -135,10 +135,13 @@ export default async function EmpresaPage() {
                 {area.metrics.length > 0 && (
                   <ul className="mt-4 space-y-1.5 border-t border-gray-100 pt-3 text-sm">
                     {area.metrics.map((m) => (
-                      <li key={m.selectionId} className="flex items-baseline justify-between gap-3">
-                        <span className="flex min-w-0 items-center gap-1.5 text-gray-600">
-                          {m.signal && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${SIGNAL_STYLE[m.signal].dot}`} aria-hidden="true" />}
-                          <span className="truncate">{m.label}</span>
+                      <li key={m.selectionId} className="flex items-start justify-between gap-3">
+                        <span className="flex min-w-0 items-start gap-1.5 text-gray-600">
+                          <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${m.signal ? SIGNAL_STYLE[m.signal].dot : "bg-gray-200"}`} aria-hidden="true" />
+                          <span className="break-words">
+                            {m.label}
+                            {m.group && <span className="block text-[11px] text-gray-400">{m.group}</span>}
+                          </span>
                         </span>
                         <span className="shrink-0 text-right">
                           {m.pendingConfig ? (
