@@ -54,7 +54,7 @@ test("el envío guarda en EOS y refleja la evidencia; el compromiso anterior se 
   const first = await submitTeamCheckin({
     slackUserId: ctx.slackA,
     privateMetadata: p(ctx.prevPeriod),
-    values: { result: v("Dos demos con perfil que retiene"), learning: v("Discovery corto"), commitment: v("3 cierres") },
+    values: { energy: { v: { selected_option: { value: "4" } } }, result: v("Dos demos con perfil que retiene"), learning: v("Discovery corto"), commitment: v("3 cierres") },
     now: new Date("2026-10-08T22:00:00Z"),
   });
   assert.equal(first.kind, "saved");
@@ -63,7 +63,7 @@ test("el envío guarda en EOS y refleja la evidencia; el compromiso anterior se 
   const missing = await submitTeamCheckin({
     slackUserId: ctx.slackA,
     privateMetadata: p(ctx.period),
-    values: { result: v("FG Asesores cerró en 5 días"), learning: v("Discovery riguroso"), commitment: v("4 cierres") },
+    values: { energy: { v: { selected_option: { value: "4" } } }, result: v("FG Asesores cerró en 5 días"), learning: v("Discovery riguroso"), commitment: v("4 cierres") },
     now: new Date("2026-10-15T22:00:00Z"),
   });
   assert.equal(missing.kind, "errors");
@@ -73,6 +73,8 @@ test("el envío guarda en EOS y refleja la evidencia; el compromiso anterior se 
     slackUserId: ctx.slackA,
     privateMetadata: p(ctx.period),
     values: {
+      energy: { v: { selected_option: { value: "2" } } },
+      energy_reason: v("Semana pesada en casa"),
       prev: { v: { selected_option: { value: "partial" } } },
       result: v("FG Asesores cerró en 5 días"),
       learning: v("Discovery riguroso"),
@@ -87,7 +89,10 @@ test("el envío guarda en EOS y refleja la evidencia; el compromiso anterior se 
   assert.equal(row.previousCommitment, "3 cierres");
   assert.equal(row.previousCommitmentStatus, "partial");
   assert.equal(row.areaKey, ctx.area.key);
+  assert.equal(row.energy, 2);
+  assert.ok(!JSON.stringify(row).includes("Semana pesada"), "el motivo personal no se guarda en EOS");
   const ev = await ctx.prisma.checkinEvidence.findUniqueOrThrow({ where: { id: row.evidenceId! } });
+  assert.ok(!ev.originalText.includes("Semana pesada"), "ni en la evidencia");
   assert.equal(ev.win, "FG Asesores cerró en 5 días");
   assert.equal(ev.challenge, "Necesito el módulo de avance de obra");
   assert.equal(ev.periodStart.getTime(), ctx.period.getTime());
@@ -99,7 +104,7 @@ test("nadie puede enviar el formulario de otra persona", { skip }, async () => {
   const r = await submitTeamCheckin({
     slackUserId: ctx.slackB,
     privateMetadata: JSON.stringify({ p: crIsoDate(ctx.period), m: ctx.a.id }),
-    values: { result: v("suplantación"), learning: v("x x x"), commitment: v("x x x") },
+    values: { energy: { v: { selected_option: { value: "4" } } }, result: v("suplantación"), learning: v("x x x"), commitment: v("x x x") },
   });
   assert.equal(r.kind, "rejected");
 });
@@ -111,6 +116,8 @@ test("editar agrega una revisión y no duplica", { skip }, async () => {
     slackUserId: ctx.slackA,
     privateMetadata: JSON.stringify({ p: crIsoDate(ctx.period), m: ctx.a.id }),
     values: {
+      energy: { v: { selected_option: { value: "2" } } },
+      energy_reason: v("Semana pesada en casa"),
       prev: { v: { selected_option: { value: "done" } } },
       result: v("FG Asesores y Sampson cerraron en ≤8 días"),
       learning: v("Discovery riguroso"),
@@ -133,7 +140,7 @@ test("el borrador usa solo lo visible y el envío es único", { skip }, async ()
   const hiddenRow = await saveCheckin({
     period: ctx.period, now: new Date("2026-10-16T14:00:00Z"), team: TEAMS.ventas, previousCommitment: null,
     member: { id: ctx.b.id, displayName: "Daniel Test", slackUserId: ctx.slackB, userId: null, areaKey: ctx.area.key },
-    submission: { result: "TEXTO-OCULTO", learning: "aprendizaje oculto", extra: null, blocker: null, commitment: "algo", previousCommitmentStatus: null, numbers: [] },
+    submission: { energy: 5, energyReason: null, result: "TEXTO-OCULTO", learning: "aprendizaje oculto", extra: null, blocker: null, commitment: "algo", previousCommitmentStatus: null, numbers: [] },
   });
   await ctx.prisma.teamCheckin.update({ where: { id: hiddenRow.id }, data: { hidden: true } });
 

@@ -30,6 +30,9 @@ async function databaseProps(): Promise<Record<string, PropType>> {
 
 export type TeamCheckinNotionRow = {
   title: string;
+  energy: number | null;
+  // null = no tocar lo que ya está (una edición no borra el motivo anterior).
+  energyReason: string | null;
   person: string;
   date: string; // YYYY-MM-DD
   team: string;
@@ -45,6 +48,10 @@ export type TeamCheckinNotionRow = {
 const TEXT_LIMIT = 1900;
 
 function valueFor(type: PropType, value: string): unknown {
+  if (type === "number") {
+    const n = Number(value);
+    return Number.isFinite(n) ? { number: n } : undefined;
+  }
   const text = value.slice(0, TEXT_LIMIT);
   if (type === "title") return { title: [{ text: { content: text } }] };
   if (type === "rich_text") return { rich_text: text ? [{ text: { content: text } }] : [] };
@@ -61,6 +68,8 @@ export function notionProperties(row: TeamCheckinNotionRow, props: Record<string
     ["Persona", row.person],
     ["Fecha", row.date],
     ["Tipo", "Check-in semanal"],
+    ["Energía", row.energy === null ? null : String(row.energy)],
+    ["Por qué", row.energyReason],
     ["Área", row.team],
     ["Win", row.result],
     ["Aprendizaje", [row.learning, row.extra].filter(Boolean).join("\n\n")],

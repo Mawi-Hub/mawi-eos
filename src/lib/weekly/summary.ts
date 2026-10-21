@@ -17,7 +17,7 @@ import { formatMetricValue } from "@/lib/metrics/format";
 import { isActionableState, resolveDataState } from "@/lib/metrics/dataState";
 import { listCheckinMembers } from "@/lib/checkin/teamCheckin";
 import { teamConfig } from "@/lib/checkin/teams";
-import { draftToParts, narrativePrompt, parseNarrative, renderWeeklyDraft, type WeekAnswer, type WeekArea, type WeekData, type WeekManagement, type WeekMetric } from "./render";
+import { draftToParts, narrativePrompt, parseNarrative, renderWeeklyDraft, summarizeEnergy, type WeekAnswer, type WeekArea, type WeekData, type WeekManagement, type WeekMetric } from "./render";
 
 export function weeklyChannel(): string | null {
   const v = process.env.WEEKLY_CHANNEL_ID?.trim();
@@ -189,6 +189,7 @@ export async function loadWeek(periodStart: Date, options: { now?: Date } = {}):
       areas: areaBlocks,
       answers,
       responded: checkins.length,
+      energy: summarizeEnergy(checkins.map((c) => c.energy)),
       expected: members.length,
       management,
       detailUrl: weekUrl(periodStart),

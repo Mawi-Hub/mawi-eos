@@ -37,6 +37,18 @@ export type WeekArea = {
   nextStep: string | null;
 };
 
+export type EnergySummary = { average: number; count: number; low: number };
+
+// Mínimo de respuestas para mostrar el promedio sin que se pueda deducir el de alguien.
+export const ENERGY_MIN_SAMPLE = 3;
+
+export function summarizeEnergy(values: Array<number | null | undefined>): EnergySummary | null {
+  const valid = values.filter((v): v is number => typeof v === "number" && v >= 1 && v <= 5);
+  if (!valid.length) return null;
+  const average = Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 10) / 10;
+  return { average, count: valid.length, low: valid.filter((v) => v <= 2).length };
+}
+
 export type WeekMetric = { label: string; valueText: string | null; targetText: string | null; signal: "on_track" | "riesgo" | "off_track" | null };
 
 export type WeekManagement = {
@@ -53,6 +65,8 @@ export type WeekData = {
   // Personas que respondieron (incluye respuestas ocultas del resumen).
   responded: number;
   expected: number;
+  // Energía agregada; nunca por persona.
+  energy: EnergySummary | null;
   management: WeekManagement | null;
   detailUrl: string | null;
 };
@@ -161,7 +175,9 @@ function commitments(d: WeekData): string | null {
 }
 
 function footer(d: WeekData): string {
-  const participation = `Respondieron ${d.responded} de ${Math.max(d.expected, d.responded)} personas.`;
+  const energy =
+    d.energy && d.energy.count >= ENERGY_MIN_SAMPLE ? ` Energía del equipo: ${String(d.energy.average).replace(".", ",")}/5.` : "";
+  const participation = `Respondieron ${d.responded} de ${Math.max(d.expected, d.responded)} personas.${energy}`;
   return `_${participation}${d.detailUrl ? ` Detalle por persona y números: ${d.detailUrl}` : ""}_`;
 }
 

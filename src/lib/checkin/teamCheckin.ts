@@ -205,6 +205,7 @@ export async function runTeamCheckin(options: { step: "open" | "remind"; dryRun?
 // ---------------------------------------------------------------------------
 
 function toExisting(row: {
+  energy: number | null;
   result: string; learning: string; extra: string | null; blocker: string | null; commitment: string;
   previousCommitmentStatus: string | null; numbers: unknown;
 }): ExistingAnswers {
@@ -305,7 +306,7 @@ export async function submitTeamCheckin(input: {
     checkinId: saved.id,
     followUp: async () => {
       await markInviteAnswered(period, input.slackUserId, memberRow.displayName, team.name);
-      await syncNotion(saved.id, team);
+      await syncNotion(saved.id, team, s.energyReason);
     },
   };
 }
@@ -336,6 +337,7 @@ export async function saveCheckin(input: SaveInput) {
     areaKey: member.areaKey,
     teamKey: team.key,
     authorName: member.displayName,
+    energy: s.energy,
     result: s.result,
     learning: s.learning,
     extra: s.extra,
@@ -393,7 +395,7 @@ async function markInviteAnswered(period: Date, slackUserId: string, name: strin
   }
 }
 
-async function syncNotion(checkinId: string, team: TeamConfig): Promise<void> {
+async function syncNotion(checkinId: string, team: TeamConfig, energyReason: string | null): Promise<void> {
   const row = await prisma.teamCheckin.findUnique({ where: { id: checkinId } });
   if (!row) return;
   try {
@@ -401,6 +403,8 @@ async function syncNotion(checkinId: string, team: TeamConfig): Promise<void> {
     const pageId = await upsertTeamCheckinNotion(
       {
         title: `Check-in — ${row.authorName} — ${crIsoDate(row.periodStart)}`,
+        energy: row.energy,
+        energyReason,
         person: row.authorName,
         date: crIsoDate(row.submittedAt),
         team: team.name,

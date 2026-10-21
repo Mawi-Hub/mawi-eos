@@ -7,6 +7,7 @@ import { periodFromIso, weekParticipation } from "@/lib/checkin/teamCheckin";
 import { weekLabel } from "@/lib/checkin/teamForm";
 import { PREVIOUS_STATUS_LABEL, teamConfig } from "@/lib/checkin/teams";
 import { loadWeek, weeklyChannel } from "@/lib/weekly/summary";
+import { ENERGY_MIN_SAMPLE } from "@/lib/weekly/render";
 import { CheckinToggles, ManagementToggle } from "./checkin-toggles";
 import { SummaryEditor } from "./summary-editor";
 
@@ -74,6 +75,18 @@ export default async function SemanaPage({ searchParams }: { searchParams: Promi
             <span className="text-lg text-gray-400">/{Math.max(members.length, answers.length)}</span>
             <span className="ml-2 text-sm text-gray-500">respondieron</span>
           </div>
+          {loaded.data.energy && loaded.data.energy.count >= ENERGY_MIN_SAMPLE && (
+            <div title="Promedio de quienes respondieron. No se muestra el número de nadie.">
+              <span className="text-3xl font-semibold text-gray-900">{String(loaded.data.energy.average).replace(".", ",")}</span>
+              <span className="text-lg text-gray-400">/5</span>
+              <span className="ml-2 text-sm text-gray-500">energía del equipo</span>
+              {loaded.data.energy.low > 0 && (
+                <span className="ml-3 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-800">
+                  {loaded.data.energy.low} persona{loaded.data.energy.low === 1 ? "" : "s"} en 1–2: puede servir preguntar qué apoyo necesitan
+                </span>
+              )}
+            </div>
+          )}
           {members.length === 0 && (
             <span className="text-sm text-amber-700">
               Nadie tiene equipo asignado todavía: cargá el roster (equipo + Slack) para que llegue el check-in.

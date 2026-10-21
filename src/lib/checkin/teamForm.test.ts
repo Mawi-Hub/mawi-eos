@@ -30,7 +30,7 @@ test("el modal lleva las preguntas del equipo, los números y el compromiso ante
     memberId: "m1",
   }) as { blocks: Array<{ block_id?: string; label?: { text: string }; elements?: Array<{ text: string }> }>; private_metadata: string };
   const ids = view.blocks.map((b) => b.block_id).filter(Boolean);
-  assert.deepEqual(ids, ["prev", "result", "learning", "num_cierres", "num_mrr_cerrado", "blocker", "commitment"]);
+  assert.deepEqual(ids, ["energy", "energy_reason", "prev", "result", "learning", "num_cierres", "num_mrr_cerrado", "blocker", "commitment"]);
   assert.equal(view.blocks.find((b) => b.block_id === "result")?.label?.text, TEAMS.ventas.result);
   assert.match(JSON.stringify(view.blocks), /Show rate: \*77%\* · meta 65%/);
   assert.deepEqual(parseMetadata(view.private_metadata), { p: "2026-10-19", m: "m1" });
@@ -43,16 +43,18 @@ test("sin compromiso anterior no se pregunta cómo terminó", () => {
 });
 
 test("faltan campos obligatorios → errores por bloque, nada se guarda", () => {
-  const r = parseSubmission(TEAMS.ventas, { result: v(""), learning: v("aprendí"), commitment: v(" "), num_cierres: v("-2") }, true);
+  const r = parseSubmission(TEAMS.ventas, { result: v(""), learning: v("aprendí"), commitment: v(" "), num_cierres: v("-2"), energy: { v: { selected_option: { value: "9" } } } }, true);
   assert.equal(r.ok, false);
   if (r.ok) return;
-  assert.deepEqual(Object.keys(r.errors).sort(), ["commitment", "num_cierres", "prev", "result"]);
+  assert.deepEqual(Object.keys(r.errors).sort(), ["commitment", "energy", "num_cierres", "prev", "result"]);
 });
 
 test("una respuesta completa se normaliza", () => {
   const r = parseSubmission(
     TEAMS.ventas,
     {
+      energy: { v: { selected_option: { value: "4" } } },
+      energy_reason: v("  Buena semana  "),
       prev: { v: { selected_option: { value: "partial" } } },
       result: v("  2 cierres con perfil que retiene (FG, Sampson)  "),
       learning: v("Discovery riguroso acorta el ciclo"),
@@ -67,6 +69,9 @@ test("una respuesta completa se normaliza", () => {
   if (!r.ok) return;
   assert.equal(r.submission.result, "2 cierres con perfil que retiene (FG, Sampson)");
   assert.equal(r.submission.blocker, null);
+  assert.equal(r.submission.energy, 4);
+  assert.equal(r.submission.energyReason, "Buena semana");
+  assert.doesNotMatch(submissionText(TEAMS.ventas, r.submission, null), /Buena semana|Energía/, "lo personal no va a la evidencia");
   assert.equal(r.submission.previousCommitmentStatus, "partial");
   assert.deepEqual(r.submission.numbers.map((n) => n.value), [2, 650.5]);
   assert.match(submissionText(TEAMS.ventas, r.submission, "3 cierres"), /Compromiso anterior \(Parcial\): 3 cierres/);
