@@ -203,7 +203,7 @@ export default async function ScorecardPage({
                 <th className="px-3 py-2 text-right">Meta</th>
                 <th className="hidden px-3 py-2 md:table-cell">Tendencia</th>
                 <th className="hidden px-3 py-2 lg:table-cell">Período</th>
-                <th className="px-3 py-2">Cargar</th>
+                <th className="whitespace-nowrap px-3 py-2">Cargar</th>
                 {isCeo && <th className="w-8 px-2 py-2" aria-label="Configurar" />}
               </tr>
             </thead>
@@ -230,7 +230,7 @@ export default async function ScorecardPage({
                     const def = row.definition ?? {};
                     return (
                       <tr key={row.selectionId} className={row.pendingConfig ? "text-gray-400" : "hover:bg-gray-50"}>
-                        <td className="min-w-[12rem] max-w-sm px-3 py-2">
+                        <td className="w-[30%] min-w-[15rem] px-3 py-2">
                           <div className="flex items-start gap-2">
                             <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
                             <span className={`break-words font-medium ${row.pendingConfig ? "text-gray-500" : "text-gray-900"}`} title={def.description ?? undefined}>
@@ -244,7 +244,7 @@ export default async function ScorecardPage({
                             {row.pendingConfig && <span>· por configurar</span>}
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right">
+                        <td className="min-w-[8rem] max-w-[14rem] px-3 py-2 text-right">
                           {row.pendingConfig ? <span className="text-xs">—</span> : <SelectionMetricValue view={row} />}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-gray-500">{row.pendingConfig ? "—" : row.targetText ?? "por confirmar"}</td>
@@ -260,7 +260,7 @@ export default async function ScorecardPage({
                           )}
                         </td>
                         <td className="hidden whitespace-nowrap px-3 py-2 text-xs text-gray-500 lg:table-cell">{row.pendingConfig ? "—" : row.periodLabel}</td>
-                        <td className="px-3 py-2">
+                        <td className="whitespace-nowrap px-3 py-2">
                           {canEnter && quarter && row.metric ? (
                             <div className="flex items-center gap-1">
                               <QuickEntry metricId={row.metric.id} quarterId={quarter.id} unit={row.metric.unit} placeholder={row.metric.unit === "%" ? "%" : row.metric.unit === "$" ? "$" : "valor"} />
