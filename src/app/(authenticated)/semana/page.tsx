@@ -185,7 +185,7 @@ export default async function SemanaPage({ searchParams }: { searchParams: Promi
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="space-y-4">
                 {g.rows.map((r) => (
                   <CheckinCard key={r.id} checkin={r} canManage={canManage} />
                 ))}
