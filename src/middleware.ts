@@ -7,6 +7,6 @@ export default NextAuth(authConfig).auth;
 // login los necesita antes de que haya una.
 export const config = {
   matcher: [
-    "/((?!login|api/auth|api/health|api/checkin|api/l10/cron|api/l10/digest|api/sync/cron|api/weekly/cron|share|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!login|api/auth|api/health|api/checkin|api/l10/cron|api/l10/digest|api/l10/themes|api/sync/cron|api/weekly/cron|share|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

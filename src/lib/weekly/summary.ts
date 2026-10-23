@@ -17,6 +17,8 @@ import { formatMetricValue } from "@/lib/metrics/format";
 import { isActionableState, resolveDataState } from "@/lib/metrics/dataState";
 import { listCheckinMembers } from "@/lib/checkin/teamCheckin";
 import { teamConfig } from "@/lib/checkin/teams";
+import { claudeJson } from "./claude";
+import { readThemes } from "./themes";
 import { draftToParts, narrativePrompt, parseNarrative, renderWeeklyDraft, summarizeEnergy, type WeekAnswer, type WeekArea, type WeekData, type WeekManagement, type WeekMetric } from "./render";
 
 export function weeklyChannel(): string | null {
@@ -182,9 +184,24 @@ export async function loadWeek(periodStart: Date, options: { now?: Date } = {}):
     }
   }
 
+  // ---- Lo que escuchamos: temas del equipo llevados a IDS -------------------
+  const promoted = readThemes(summary?.teamThemes).filter((t) => t.issueId);
+  const promotedIssues = promoted.length
+    ? await prisma.l10Issue.findMany({ where: { id: { in: promoted.map((t) => t.issueId!) } }, select: { id: true, idsStatus: true, shareable: true, sharedSummary: true } })
+    : [];
+  const heard = promoted
+    .map((t) => ({ t, issue: promotedIssues.find((i) => i.id === t.issueId) }))
+    .filter((x) => x.issue && !screenSensitive(x.t.title).sensitive)
+    .map(({ t, issue }) => ({
+      title: neutralizeSlack(t.title),
+      resolved: issue!.idsStatus === "resolved",
+      sharedSummary: issue!.shareable && issue!.sharedSummary ? neutralizeSlack(issue!.sharedSummary) : null,
+    }));
+
   return {
     data: {
       periodStart,
+      heard,
       companyMetrics,
       areas: areaBlocks,
       answers,
@@ -206,25 +223,6 @@ export async function loadWeek(periodStart: Date, options: { now?: Date } = {}):
 // ---------------------------------------------------------------------------
 // Borrador
 // ---------------------------------------------------------------------------
-
-async function claudeJson(prompt: string): Promise<unknown> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1800, messages: [{ role: "user", content: prompt }] }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-    const text = (data.content?.find((b) => b.type === "text")?.text ?? "").trim().replace(/^```(?:json)?\s*|\s*```$/g, "");
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
 
 export type DraftDeps = { claude: (prompt: string) => Promise<unknown> };
 

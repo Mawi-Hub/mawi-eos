@@ -255,6 +255,9 @@ model L10Issue {
   // y la empresa ve únicamente sharedSummary.
   shareable      Boolean   @default(false)
   sharedSummary  String?   @map("shared_summary")
+  // Si nació de un tema que se repite en el check-in del equipo:
+  // "<lunes ISO>:<id del tema>". No cuenta para el máximo de 3 por persona.
+  teamThemeId    String?   @map("team_theme_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -920,6 +923,9 @@ model WeeklySummary {
   editedAt    DateTime? @map("edited_at")
   // Ítems de management (acuerdos, bloqueos) que no van en el resumen: ["commitment:<id>", "issue:<id>"].
   hiddenItems Json      @default("[]") @map("hidden_items")
+  // Temas que se repiten en el check-in del equipo (viernes 10:15), para la L10.
+  teamThemes        Json      @default("[]") @map("team_themes")
+  themesGeneratedAt DateTime? @map("themes_generated_at")
   // Reunión de management incluida (si hubo una cerrada esa semana).
   meetingId   String?   @map("meeting_id")
   channel     String?
