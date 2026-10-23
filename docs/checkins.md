@@ -31,6 +31,12 @@ Si alguien no responde dos semanas seguidas, se habla en el 1:1.
   esqueleto — resultado (con evidencia), aprendizaje, una pregunta opcional del
   equipo, números personales sin fuente, bloqueo/ayuda y compromiso para la
   próxima semana — redactado según el Rock y los KPIs del área.
+- **Números personales**: obligatorios (si no hubo, se pone 0; los
+  porcentajes van de 0 a 100). Ventas: cierres, MRR cerrado, show rate y
+  conversión demo → cierre propios. Growth: leads a Ventas y experimentos.
+  Onboarding: sesiones y clientes con activación inicial. Producto:
+  conversaciones con clientes. CS: MRR en riesgo recuperado. Soporte: tickets
+  atendidos y cerrados. Ingeniería: bugs, mejoras y features resueltos.
 - **Números de sistemas**: el formulario muestra, precargadas, las métricas de la
   selección trimestral del área (filtradas por prefijo para Soporte, Onboarding y
   Success). No se piden.

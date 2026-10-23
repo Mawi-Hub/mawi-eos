@@ -30,7 +30,7 @@ test("el modal lleva las preguntas del equipo, los números y el compromiso ante
     memberId: "m1",
   }) as { blocks: Array<{ block_id?: string; label?: { text: string }; elements?: Array<{ text: string }> }>; private_metadata: string };
   const ids = view.blocks.map((b) => b.block_id).filter(Boolean);
-  assert.deepEqual(ids, ["energy", "energy_reason", "prev", "result", "learning", "num_cierres", "num_mrr_cerrado", "blocker", "commitment"]);
+  assert.deepEqual(ids, ["energy", "energy_reason", "prev", "result", "learning", "num_cierres", "num_mrr_cerrado", "num_show_rate", "num_conversion", "blocker", "commitment"]);
   assert.equal(view.blocks.find((b) => b.block_id === "result")?.label?.text, TEAMS.ventas.result);
   assert.match(JSON.stringify(view.blocks), /Show rate: \*77%\* · meta 65%/);
   assert.deepEqual(parseMetadata(view.private_metadata), { p: "2026-10-19", m: "m1" });
@@ -46,7 +46,7 @@ test("faltan campos obligatorios → errores por bloque, nada se guarda", () => 
   const r = parseSubmission(TEAMS.ventas, { result: v(""), learning: v("aprendí"), commitment: v(" "), num_cierres: v("-2"), energy: { v: { selected_option: { value: "9" } } } }, true);
   assert.equal(r.ok, false);
   if (r.ok) return;
-  assert.deepEqual(Object.keys(r.errors).sort(), ["commitment", "energy", "num_cierres", "prev", "result"]);
+  assert.deepEqual(Object.keys(r.errors).sort(), ["commitment", "energy", "num_cierres", "num_conversion", "num_mrr_cerrado", "num_show_rate", "prev", "result"]);
 });
 
 test("una respuesta completa se normaliza", () => {
@@ -60,6 +60,8 @@ test("una respuesta completa se normaliza", () => {
       learning: v("Discovery riguroso acorta el ciclo"),
       num_cierres: v("2"),
       num_mrr_cerrado: v("650.5"),
+      num_show_rate: v("75"),
+      num_conversion: v("0"),
       blocker: v(""),
       commitment: v("4 cierres: ATS, Luis Germán, IACOSA, EME"),
     },
@@ -73,7 +75,7 @@ test("una respuesta completa se normaliza", () => {
   assert.equal(r.submission.energyReason, "Buena semana");
   assert.doesNotMatch(submissionText(TEAMS.ventas, r.submission, null), /Buena semana|Energía/, "lo personal no va a la evidencia");
   assert.equal(r.submission.previousCommitmentStatus, "partial");
-  assert.deepEqual(r.submission.numbers.map((n) => n.value), [2, 650.5]);
+  assert.deepEqual(r.submission.numbers.map((n) => n.value), [2, 650.5, 75, 0]);
   assert.match(submissionText(TEAMS.ventas, r.submission, "3 cierres"), /Compromiso anterior \(Parcial\): 3 cierres/);
 });
 
@@ -87,4 +89,16 @@ test("la invitación respondida ofrece editar y neutraliza menciones", () => {
   const text = JSON.stringify(msg.blocks);
   assert.match(text, /Editar mi respuesta/);
   assert.doesNotMatch(text, /<!channel>/);
+});
+
+test("los números son obligatorios y los porcentajes no pasan de 100", () => {
+  const base = { energy: { v: { selected_option: { value: "3" } } }, result: v("algo útil"), learning: v("aprendí"), commitment: v("compromiso") };
+  const empty = parseSubmission(TEAMS.producto, { ...base, num_conversaciones: v("") }, false);
+  assert.equal(empty.ok, false);
+  if (!empty.ok) assert.match(empty.errors.num_conversaciones, /obligatorio/);
+  const zero = parseSubmission(TEAMS.producto, { ...base, num_conversaciones: v("0") }, false);
+  assert.equal(zero.ok, true);
+  const over = parseSubmission(TEAMS.ventas, { ...base, num_cierres: v("1"), num_mrr_cerrado: v("0"), num_show_rate: v("120"), num_conversion: v("10") }, false);
+  assert.equal(over.ok, false);
+  if (!over.ok) assert.deepEqual(Object.keys(over.errors), ["num_show_rate"]);
 });

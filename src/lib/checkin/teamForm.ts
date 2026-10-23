@@ -186,7 +186,8 @@ export function buildModal(input: ModalInput): Record<string, unknown> {
     blocks.push({
       type: "input",
       block_id: `num_${field.key}`,
-      optional: true,
+      // Obligatorio: si no hubo, se pone 0.
+      optional: false,
       label: plain(field.label),
       ...(field.hint ? { hint: plain(field.hint) } : {}),
       element: {
@@ -194,6 +195,7 @@ export function buildModal(input: ModalInput): Record<string, unknown> {
         action_id: "v",
         is_decimal_allowed: !!field.decimal,
         min_value: "0",
+        ...(field.max !== undefined ? { max_value: String(field.max) } : {}),
         ...(prior !== undefined && prior !== null ? { initial_value: String(prior) } : {}),
       },
     });
@@ -261,12 +263,16 @@ export function parseSubmission(
   for (const field of team.numbers) {
     const raw = values[`num_${field.key}`]?.v?.value;
     if (raw === undefined || raw === null || String(raw).trim() === "") {
-      numbers.push({ key: field.key, label: field.label, value: null });
+      errors[`num_${field.key}`] = "Este número es obligatorio. Si no hubo, poné 0.";
       continue;
     }
     const n = Number(String(raw).replace(",", "."));
     if (!Number.isFinite(n) || n < 0) {
       errors[`num_${field.key}`] = "Tiene que ser un número igual o mayor que 0.";
+      continue;
+    }
+    if (field.max !== undefined && n > field.max) {
+      errors[`num_${field.key}`] = `Tiene que estar entre 0 y ${field.max}.`;
       continue;
     }
     numbers.push({ key: field.key, label: field.label, value: field.decimal ? n : Math.round(n) });

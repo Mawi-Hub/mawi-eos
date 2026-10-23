@@ -12,6 +12,8 @@ export type NumberField = {
   // Texto de ayuda corto debajo del campo.
   hint?: string;
   decimal?: boolean;
+  // Tope (p. ej. 100 para porcentajes).
+  max?: number;
 };
 
 export type TeamConfig = {
@@ -56,6 +58,8 @@ export const TEAMS: Record<TeamKey, TeamConfig> = {
     numbers: [
       { key: "cierres", label: "Cierres de la semana" },
       { key: "mrr_cerrado", label: "MRR cerrado esta semana (USD)", decimal: true },
+      { key: "show_rate", label: "Tu show rate de la semana (%)", hint: "Demos realizadas ÷ demos agendadas × 100. Si no tuviste demos agendadas, poné 0.", decimal: true, max: 100 },
+      { key: "conversion", label: "Tu conversión demo → cierre de la semana (%)", hint: "Cierres ÷ demos realizadas × 100. Si no tuviste demos, poné 0.", decimal: true, max: 100 },
     ],
   },
   soporte: {
@@ -80,7 +84,10 @@ export const TEAMS: Record<TeamKey, TeamConfig> = {
     result: "¿Qué cuentas tienen oportunidad de expansión o riesgo de retención, qué se les ofreció y qué pasó?",
     learning: "¿Qué aprendimos del experimento del mes y qué parte del proceso ya podemos repetir con evidencia?",
     extra: "¿Qué probamos en marketing, qué aprendimos y qué conviene repetir o dejar de hacer?",
-    numbers: [{ key: "leads_a_ventas", label: "Leads que Marketing envió a Ventas" }],
+    numbers: [
+      { key: "leads_a_ventas", label: "Leads que Marketing envió a Ventas" },
+      { key: "experimentos", label: "Experimentos de growth hechos esta semana" },
+    ],
   },
   ingenieria: {
     key: "ingenieria",
@@ -102,7 +109,7 @@ export const TEAMS: Record<TeamKey, TeamConfig> = {
     learning:
       "¿Qué aprendimos sobre cómo el cliente obtiene valor en campo o en oficina, o sobre dónde se traba en el flujo inicial sin ayuda?",
     extra: "¿Qué probamos o qué avanzó en una prueba anterior? ¿Qué aprendimos?",
-    numbers: [],
+    numbers: [{ key: "conversaciones", label: "Conversaciones con clientes esta semana" }],
   },
   onboarding: {
     key: "onboarding",
@@ -113,7 +120,10 @@ export const TEAMS: Record<TeamKey, TeamConfig> = {
       "¿Qué cuentas llegaron a su primer valor (presupuesto con gastos asignados y primer reporte al ejecutivo) y cuáles ya lo repiten sin nuestra ayuda?",
     learning: "¿Qué las está frenando y qué prueba nos ayudó a reducir esa dificultad?",
     extra: "¿Qué aprendiste que puede darle más valor a un cliente o convertirse en una mejora de producto?",
-    numbers: [{ key: "sesiones", label: "Sesiones de onboarding" }],
+    numbers: [
+      { key: "sesiones", label: "Sesiones de onboarding" },
+      { key: "activaciones", label: "Clientes que lograron la activación inicial esta semana" },
+    ],
   },
   cs: {
     key: "cs",
