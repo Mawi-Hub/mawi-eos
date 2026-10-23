@@ -27,8 +27,11 @@ entra solo si lo mencionan 2 o más personas, si continúa uno de las últimas 4
 semanas o si es una dependencia entre áreas. Personas y áreas las cuenta EOS
 con las respuestas que Claude cita. Se guardan en `WeeklySummary.teamThemes`.
 
-- Se ven en la página de la L10, arriba de "IDS de la semana", sin nombres.
-- **Llevar a IDS** abre el formulario de IDS precargado; no usa el cupo de 3 y
+- Se ven en la página de la L10, sin nombres. Si no hay challenges de los líderes,
+  aparecen abiertos arriba de "IDS de la semana" como agenda; si los hay, quedan
+  plegados debajo como sección opcional.
+- **Llevar a IDS** abre el formulario de IDS precargado (vincular a Rock o
+  métrica es opcional para estos temas); no usa el cupo de 3 y
   cada tema se lleva una sola vez (`L10Issue.teamThemeId`). Nada es automático.
 - El resumen del viernes agrega "Lo que escuchamos del equipo": el tema, que se
   llevó a management y, si el IDS es compartible, su resumen; si no, solo si

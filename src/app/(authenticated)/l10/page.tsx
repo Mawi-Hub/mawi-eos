@@ -33,7 +33,8 @@ import {
   updatedForPeriod,
 } from "@/lib/l10/scope";
 import { lastDateChange, originalDueOf, dayKey } from "@/lib/l10/commitments";
-import { readThemes, themeMeta, themeRef } from "@/lib/weekly/themes";
+import { readThemes } from "@/lib/weekly/themes";
+import { TeamThemesSection } from "./team-themes-section";
 
 // Fecha corta de un acuerdo guardado a medianoche UTC (sin correrla de día).
 function shortDay(d: Date) {
@@ -321,7 +322,17 @@ export default async function L10Page() {
   const themesWeek = crWeekStart(meeting?.date ?? new Date());
   const themesRow = await prisma.weeklySummary.findUnique({ where: { periodStart: themesWeek }, select: { teamThemes: true, themesGeneratedAt: true } });
   const teamThemes = readThemes(themesRow?.teamThemes);
-  const issueById = new Map((meeting?.issues ?? []).map((i) => [i.id, i]));
+  // Sin challenges propuestos por los líderes, los temas del equipo son la agenda de IDS.
+  const noChallenges = !(meeting?.issues ?? []).some((i) => !i.teamThemeId);
+  const themesProps = {
+    themes: teamThemes,
+    themesWeek,
+    meeting: meeting ? { id: meeting.id, status: meeting.status, issueIds: meeting.issues.map((i) => i.id) } : null,
+    users,
+    rocks: rockOptions,
+    metrics: metricOptions,
+    remaining: remainingIssues,
+  };
   const currentUserId = session?.user?.id || "";
   const currentUser = users.find((u) => u.id === currentUserId);
 
@@ -687,57 +698,9 @@ export default async function L10Page() {
           </section>
         )}
 
-        {/* Lo que se repite en el equipo: candidatos a IDS, nunca automáticos */}
-        {teamThemes.length > 0 && (
-          <section className="rounded-lg border border-amber-200 bg-amber-50/40">
-            <div className="border-b border-amber-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-gray-900">Lo que se repite en el equipo</h2>
-              <p className="text-xs text-gray-500">
-                Sale de los check-ins de esta semana (bloqueos, aprendizajes y pedidos de ayuda). Sin nombres: el detalle por persona está en Semana. Llevar un tema a IDS no usa tu cupo de 3.
-              </p>
-            </div>
-            <ul className="divide-y divide-amber-100">
-              {teamThemes.map((t) => {
-                const issue = t.issueId ? issueById.get(t.issueId) : undefined;
-                return (
-                  <li key={t.id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                      <p className="mt-0.5 text-xs text-amber-800">{themeMeta(t)}</p>
-                      {t.detail && <p className="mt-1 text-sm text-gray-700">{t.detail}</p>}
-                      {t.quotes.length > 0 && (
-                        <div className="mt-1.5 space-y-0.5">
-                          {t.quotes.map((q) => (
-                            <p key={q} className="text-xs italic text-gray-500">“{q}”</p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {t.issueId ? (
-                      <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                        En IDS{issue ? "" : " (otra reunión)"}
-                      </span>
-                    ) : (
-                      meeting && meeting.status !== "completed" && (
-                        <AddIssueButton
-                          meetingId={meeting.id}
-                          users={users}
-                          rocks={rockOptions}
-                          metrics={metricOptions}
-                          remaining={remainingIssues}
-                          teamTheme={{
-                            ref: themeRef(themesWeek, t.id),
-                            title: t.title,
-                            description: [t.detail, `Del check-in del equipo: ${themeMeta(t)}.`].filter(Boolean).join("\n\n"),
-                          }}
-                        />
-                      )
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
+        {/* Lo que se repite en el equipo: agenda si no hay challenges; si hay, opcional y plegado debajo */}
+        {teamThemes.length > 0 && noChallenges && (
+          <TeamThemesSection {...themesProps} collapsed={false} />
         )}
 
         {/* ISSUES — protagonist */}
@@ -837,6 +800,8 @@ export default async function L10Page() {
               )}
             </div>
           </section>
+
+          {teamThemes.length > 0 && !noChallenges && <TeamThemesSection {...themesProps} collapsed />}
 
           {/* 5. Compromisos */}
           <section className="rounded-lg border border-gray-200 bg-white">
