@@ -25,7 +25,7 @@ function Answer({ question, children, tone = "default" }: { question: string; ch
   return (
     <div className={alert ? "rounded-lg bg-red-50 p-3" : ""}>
       <p className={`text-xs leading-snug ${alert ? "font-medium text-red-700" : "text-gray-500"}`}>{question}</p>
-      <p className={`mt-1 whitespace-pre-wrap text-sm leading-relaxed ${alert ? "text-red-950" : "text-gray-900"}`}>{children}</p>
+      <p className={`mt-1 max-w-4xl whitespace-pre-wrap text-sm leading-relaxed ${alert ? "text-red-950" : "text-gray-900"}`}>{children}</p>
     </div>
   );
 }
