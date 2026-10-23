@@ -13,9 +13,12 @@ interface Props {
   rocks: RockOption[];
   metrics: MetricOption[];
   remaining: number;
+  // Llevar a IDS un tema que se repite en el equipo: viene precargado y no
+  // gasta el cupo de 3.
+  teamTheme?: { ref: string; title: string; description: string };
 }
 
-export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) {
+export function AddIssueButton({ meetingId, rocks, metrics, remaining, teamTheme }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [linkKind, setLinkKind] = useState<"rock" | "metric">("rock");
@@ -46,6 +49,7 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
         linkedMetricId: linkKind === "metric" ? linkId : undefined,
         shareable,
         sharedSummary: shareable ? sharedSummary : undefined,
+        teamThemeId: teamTheme?.ref,
       }),
     });
     if (res.ok) {
@@ -61,7 +65,19 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
     setLoading(false);
   }
 
-  const disabled = remaining <= 0;
+  const disabled = !teamTheme && remaining <= 0;
+
+  if (!open && teamTheme) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="shrink-0 rounded-md border border-mawi-200 bg-white px-2.5 py-1 text-xs font-medium text-mawi-800 hover:bg-mawi-50"
+        title="Crea un IDS con este tema. No usa tu cupo de 3."
+      >
+        Llevar a IDS
+      </button>
+    );
+  }
 
   if (!open) {
     return (
@@ -81,15 +97,16 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Nuevo Issue</h3>
+        <h3 className="mb-1 text-lg font-semibold text-gray-900">{teamTheme ? "Llevar tema a IDS" : "Nuevo Issue"}</h3>
+        {teamTheme ? <p className="mb-4 text-xs text-gray-500">Viene de lo que se repite en el check-in del equipo. No usa tu cupo de 3.</p> : <div className="mb-3" />}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">¿Cuál es el problema?</label>
-            <input name="title" required className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" placeholder="Problema real, no síntoma..." />
+            <input name="title" required defaultValue={teamTheme?.title} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" placeholder="Problema real, no síntoma..." />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">Contexto (opcional)</label>
-            <textarea name="description" rows={2} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" />
+            <textarea name="description" rows={teamTheme ? 4 : 2} defaultValue={teamTheme?.description} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600" />
           </div>
 
           <div>
@@ -142,7 +159,7 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining }: Props) 
 
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={loading} className="flex-1 rounded-lg bg-mawi-800 px-4 py-2 text-sm font-medium text-white hover:bg-mawi-700 disabled:opacity-50">
-              {loading ? "..." : "Agregar Issue"}
+              {loading ? "..." : teamTheme ? "Llevar a IDS" : "Agregar Issue"}
             </button>
             <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
           </div>

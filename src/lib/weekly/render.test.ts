@@ -78,3 +78,14 @@ test("el pie muestra la participación por área sin nombres", () => {
   assert.match(draft, /Respondieron 1 de 3 personas \(Ventas 1\/1 · Producto 0\/2\)\./);
   assert.doesNotMatch(draft, /Vacía/);
 });
+
+test("lo que escuchamos solo muestra el resumen compartible del IDS", () => {
+  const draft = renderWeeklyDraft({ ...base, heard: [
+    { title: "Importación desde Excel", resolved: false, sharedSummary: "Ingeniería pagina el importador esta semana." },
+    { title: "Avance de obra", resolved: true, sharedSummary: null },
+  ] }, null);
+  assert.match(draft, /Lo que escuchamos del equipo/);
+  assert.match(draft, /Importación desde Excel: lo llevamos a la reunión de management\. Ingeniería pagina/);
+  assert.match(draft, /Avance de obra: lo llevamos a la reunión de management\. Quedó resuelto\./);
+  assert.doesNotMatch(renderWeeklyDraft(base, null), /Lo que escuchamos/);
+});

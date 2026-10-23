@@ -161,11 +161,17 @@ export async function sendL10Digest(options?: { dryRun?: boolean }): Promise<{
   const dryRun = options?.dryRun ?? false;
   const text = await buildL10Digest();
   if (!text) return { text: null, recipients: [], dryRun };
+  const recipients = await deliverToLeadership(text, dryRun);
+  console.log(`[l10-digest] Enviado a ${recipients.length} destinatarios${dryRun ? " (dry-run)" : ""}`);
+  return { text, recipients, dryRun };
+}
 
+// Al canal de la L10 si está configurado; si no, DM a cada líder.
+export async function deliverToLeadership(text: string, dryRun: boolean): Promise<string[]> {
   const channel = process.env.L10_CHANNEL_ID?.trim();
   if (channel) {
     if (!dryRun) await postSlackMessage(channel, text);
-    return { text, recipients: [channel], dryRun };
+    return [channel];
   }
 
   // Sin canal configurado: DM a cada líder.
@@ -187,7 +193,5 @@ export async function sendL10Digest(options?: { dryRun?: boolean }): Promise<{
     await postSlackMessage(dm, text);
     recipients.push(u.name);
   }
-
-  console.log(`[l10-digest] Enviado a ${recipients.length} destinatarios${dryRun ? " (dry-run)" : ""}`);
-  return { text, recipients, dryRun };
+  return recipients;
 }

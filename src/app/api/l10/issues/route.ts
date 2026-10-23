@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { getMetricScope } from "@/lib/selection/quarterSelection";
 import { metricInScope } from "@/lib/l10/scope";
 import { validateIssueShare } from "@/lib/l10/share";
+import { crMidnight } from "@/lib/time/costaRica";
+import { parseThemeRef, readThemes } from "@/lib/weekly/themes";
 
 const MAX_ISSUES_PER_PERSON = 3;
 
@@ -11,7 +13,7 @@ export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { meetingId, title, description, priority, linkedRockId, linkedMetricId, shareable, sharedSummary } = await request.json();
+  const { meetingId, title, description, priority, linkedRockId, linkedMetricId, shareable, sharedSummary, teamThemeId } = await request.json();
 
   if (!linkedRockId && !linkedMetricId) {
     return NextResponse.json({ error: "Vincula el issue a un Rock o a una métrica del Scorecard" }, { status: 400 });
@@ -34,9 +36,27 @@ export async function POST(request: Request) {
     }
   }
 
-  const existingCount = await prisma.l10Issue.count({
-    where: { meetingId, raisedById: session.user.id },
-  });
+  // Un tema que se repite en el equipo se lleva a IDS sin gastar el cupo de
+  // quien lo lleva, y una sola vez.
+  let theme: { periodStart: Date; themes: ReturnType<typeof readThemes>; id: string } | null = null;
+  if (teamThemeId !== undefined && teamThemeId !== null) {
+    const ref = typeof teamThemeId === "string" ? parseThemeRef(teamThemeId) : null;
+    if (!ref) return NextResponse.json({ error: "Tema inválido" }, { status: 400 });
+    const [y, m, d] = ref.week.split("-").map(Number);
+    const periodStart = crMidnight(y, m, d);
+    const row = await prisma.weeklySummary.findUnique({ where: { periodStart }, select: { teamThemes: true } });
+    const themes = readThemes(row?.teamThemes);
+    const found = themes.find((t) => t.id === ref.themeId);
+    if (!found) return NextResponse.json({ error: "Ese tema ya no está en la lista de la semana" }, { status: 404 });
+    if (found.issueId || (await prisma.l10Issue.count({ where: { teamThemeId } }))) {
+      return NextResponse.json({ error: "Ese tema ya se llevó a IDS" }, { status: 409 });
+    }
+    theme = { periodStart, themes, id: ref.themeId };
+  }
+
+  const existingCount = theme
+    ? 0
+    : await prisma.l10Issue.count({ where: { meetingId, raisedById: session.user.id, teamThemeId: null } });
   if (existingCount >= MAX_ISSUES_PER_PERSON) {
     return NextResponse.json(
       { error: `Máximo ${MAX_ISSUES_PER_PERSON} issues por persona en una reunión` },
@@ -55,9 +75,16 @@ export async function POST(request: Request) {
       linkedMetricId: linkedMetricId || null,
       shareable: share.shareable,
       sharedSummary: share.sharedSummary,
+      teamThemeId: theme ? teamThemeId : null,
       submittedAt: new Date(),
     },
   });
+  if (theme) {
+    await prisma.weeklySummary.update({
+      where: { periodStart: theme.periodStart },
+      data: { teamThemes: theme.themes.map((t) => (t.id === theme.id ? { ...t, issueId: issue.id } : t)) },
+    });
+  }
 
   return NextResponse.json(issue);
 }

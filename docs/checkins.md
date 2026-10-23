@@ -12,11 +12,27 @@
 | Vie 08:45 | Aviso a los managers con algo pendiente, con lo que falta | `/api/checkin/kpi/nudge` |
 | Vie 09:15 | Pre-read de la L10 | `/api/l10/digest` |
 | Vie 10:00 | DM a cada manager con quién de su área no respondió (el manager no aparece en su lista) | `/api/checkin/team?step=managers` |
+| Vie 10:15 | Lo que se repite en el equipo: temas de los check-ins para la L10, con aviso a management | `/api/l10/themes` |
 | Vie 11:00 | Aviso en `#weekly-check-ins` con cuántos faltan, **sin nombres**; no sale si respondieron todos o ya se publicó | `/api/checkin/team?step=channel` |
 | Vie 13:00 | Borrador del resumen semanal + DM a quien facilita | `/api/weekly/cron` |
 | Vie ≤15:00 | Quien facilita revisa en **EOS → Semana** y envía a `#weekly-check-ins` | (manual) |
 
 El resumen de los lunes se eliminó: lo reemplaza el resumen del viernes.
+
+## Lo que se repite en el equipo (L10)
+
+A las 10:15 Claude lee los bloqueos, aprendizajes y pedidos de ayuda de la
+semana (sin las respuestas con temas sensibles) y arma hasta 6 temas. Un tema
+entra solo si lo mencionan 2 o más personas, si continúa uno de las últimas 4
+semanas o si es una dependencia entre áreas. Personas y áreas las cuenta EOS
+con las respuestas que Claude cita. Se guardan en `WeeklySummary.teamThemes`.
+
+- Se ven en la página de la L10, arriba de "IDS de la semana", sin nombres.
+- **Llevar a IDS** abre el formulario de IDS precargado; no usa el cupo de 3 y
+  cada tema se lleva una sola vez (`L10Issue.teamThemeId`). Nada es automático.
+- El resumen del viernes agrega "Lo que escuchamos del equipo": el tema, que se
+  llevó a management y, si el IDS es compartible, su resumen; si no, solo si
+  quedó resuelto o sigue en discusión.
 
 Nunca se publica quién no respondió: el seguimiento personal lo hace el manager.
 El resumen muestra la participación por área (p. ej. `Ventas 3/3 · Customer 5/6`).

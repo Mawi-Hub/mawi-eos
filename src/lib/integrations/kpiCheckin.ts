@@ -649,7 +649,7 @@ Respondé ÚNICAMENTE con JSON válido, sin markdown ni backticks:
     const meeting = await findOrCreateUpcomingMeeting();
     if (meeting) {
       const already = await prisma.l10Issue.count({
-        where: { meetingId: meeting.id, raisedById: session.userId },
+        where: { meetingId: meeting.id, raisedById: session.userId, teamThemeId: null },
       });
       // Mismo tope que la UI: 3 issues por persona por reunión.
       for (const c of linked.slice(0, Math.max(0, 3 - already))) {

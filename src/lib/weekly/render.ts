@@ -67,6 +67,8 @@ export type WeekData = {
   expected: number;
   // Respondieron / esperados por área, para el pie del resumen.
   areaParticipation?: Array<{ name: string; responded: number; expected: number }>;
+  // Temas del equipo que se llevaron a la L10 y qué pasó (solo lo compartible).
+  heard?: Array<{ title: string; resolved: boolean; sharedSummary: string | null }>;
   // Energía agregada; nunca por persona.
   energy: EnergySummary | null;
   management: WeekManagement | null;
@@ -176,6 +178,16 @@ function commitments(d: WeekData): string | null {
   return `*Compromisos para la próxima semana*\n${blocks.join("\n")}`;
 }
 
+// Cierra el ciclo: lo que el equipo levantó y management llevó a IDS.
+function heard(d: WeekData): string | null {
+  if (!d.heard?.length) return null;
+  const rows = d.heard.map((h) => {
+    const outcome = h.sharedSummary ? ` ${line(h.sharedSummary, 300)}` : h.resolved ? " Quedó resuelto." : " Está en discusión.";
+    return `• ${line(h.title, 160)}: lo llevamos a la reunión de management.${outcome}`;
+  });
+  return `*Lo que escuchamos del equipo*\n${rows.join("\n")}`;
+}
+
 function footer(d: WeekData): string {
   const energy =
     d.energy && d.energy.count >= ENERGY_MIN_SAMPLE ? ` Energía del equipo: ${String(d.energy.average).replace(".", ",")}/5.` : "";
@@ -186,7 +198,7 @@ function footer(d: WeekData): string {
 
 // Borrador completo y editable: mensaje principal, marcador y lo que va en el hilo.
 export function renderWeeklyDraft(d: WeekData, narrative: Narrative | null): string {
-  const main = [header(d), priorities(d), byArea(d, narrative), learnings(d, narrative), help(d), d.management ? management(d.management) : null, footer(d)]
+  const main = [header(d), priorities(d), byArea(d, narrative), learnings(d, narrative), help(d), d.management ? management(d.management) : null, heard(d), footer(d)]
     .filter((b): b is string => !!b);
   const thread = [commitments(d)].filter((b): b is string => !!b);
   return thread.length ? `${main.join("\n\n")}\n\n${THREAD_MARKER}\n\n${thread.join("\n\n")}` : main.join("\n\n");

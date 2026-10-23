@@ -32,6 +32,10 @@
       "schedule": "0 16 * * 5"
     },
     {
+      "path": "/api/l10/themes",
+      "schedule": "15 16 * * 5"
+    },
+    {
       "path": "/api/checkin/team?step=channel",
       "schedule": "0 17 * * 5"
     },
