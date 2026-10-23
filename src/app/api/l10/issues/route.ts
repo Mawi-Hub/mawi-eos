@@ -15,7 +15,8 @@ export async function POST(request: Request) {
 
   const { meetingId, title, description, priority, linkedRockId, linkedMetricId, shareable, sharedSummary, teamThemeId } = await request.json();
 
-  if (!linkedRockId && !linkedMetricId) {
+  // Un tema del equipo se puede discutir sin Rock ni métrica; un challenge no.
+  if (!linkedRockId && !linkedMetricId && !teamThemeId) {
     return NextResponse.json({ error: "Vincula el issue a un Rock o a una métrica del Scorecard" }, { status: 400 });
   }
   if (linkedRockId && linkedMetricId) {

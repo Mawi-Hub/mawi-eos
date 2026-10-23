@@ -31,7 +31,7 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining, teamTheme
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    if (!linkId) {
+    if (!linkId && !teamTheme) {
       setError("Vincula a un Rock o métrica");
       return;
     }
@@ -45,8 +45,8 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining, teamTheme
         title: fd.get("title"),
         description: fd.get("description"),
         priority: fd.get("priority"),
-        linkedRockId: linkKind === "rock" ? linkId : undefined,
-        linkedMetricId: linkKind === "metric" ? linkId : undefined,
+        linkedRockId: linkKind === "rock" && linkId ? linkId : undefined,
+        linkedMetricId: linkKind === "metric" && linkId ? linkId : undefined,
         shareable,
         sharedSummary: shareable ? sharedSummary : undefined,
         teamThemeId: teamTheme?.ref,
@@ -110,13 +110,13 @@ export function AddIssueButton({ meetingId, rocks, metrics, remaining, teamTheme
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Vincular a</label>
+            <label className="block text-sm font-medium text-gray-700">Vincular a{teamTheme ? " (opcional)" : ""}</label>
             <div className="mt-1 flex gap-2">
               <button type="button" onClick={() => { setLinkKind("rock"); setLinkId(""); }} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${linkKind === "rock" ? "border-mawi-600 bg-mawi-50 text-mawi-800" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>Rock</button>
               <button type="button" onClick={() => { setLinkKind("metric"); setLinkId(""); }} className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${linkKind === "metric" ? "border-mawi-600 bg-mawi-50 text-mawi-800" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>Métrica</button>
             </div>
-            <select value={linkId} onChange={(e) => setLinkId(e.target.value)} required className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600">
-              <option value="">— Seleccionar {linkKind === "rock" ? "Rock" : "métrica"} —</option>
+            <select value={linkId} onChange={(e) => setLinkId(e.target.value)} required={!teamTheme} className="mt-2 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-mawi-600 focus:outline-none focus:ring-1 focus:ring-mawi-600">
+              <option value="">{teamTheme ? "— Sin vincular —" : `— Seleccionar ${linkKind === "rock" ? "Rock" : "métrica"} —`}</option>
               {linkOptions.map((o) => (
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
