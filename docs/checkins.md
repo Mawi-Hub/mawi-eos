@@ -11,10 +11,16 @@
 | Vie 08:00 | Preparación de los managers (Rock, métricas, wins del equipo, acuerdos, IDS) | `/api/checkin/kpi` |
 | Vie 08:45 | Aviso a los managers con algo pendiente, con lo que falta | `/api/checkin/kpi/nudge` |
 | Vie 09:15 | Pre-read de la L10 | `/api/l10/digest` |
-| Vie 12:00 | Borrador del resumen semanal + DM a quien facilita | `/api/weekly/cron` |
+| Vie 10:00 | DM a cada manager con quién de su área no respondió (el manager no aparece en su lista) | `/api/checkin/team?step=managers` |
+| Vie 11:00 | Aviso en `#weekly-check-ins` con cuántos faltan, **sin nombres**; no sale si respondieron todos o ya se publicó | `/api/checkin/team?step=channel` |
+| Vie 13:00 | Borrador del resumen semanal + DM a quien facilita | `/api/weekly/cron` |
 | Vie ≤15:00 | Quien facilita revisa en **EOS → Semana** y envía a `#weekly-check-ins` | (manual) |
 
 El resumen de los lunes se eliminó: lo reemplaza el resumen del viernes.
+
+Nunca se publica quién no respondió: el seguimiento personal lo hace el manager.
+El resumen muestra la participación por área (p. ej. `Ventas 3/3 · Customer 5/6`).
+Si alguien no responde dos semanas seguidas, se habla en el 1:1.
 
 ## Check-in del equipo (formulario de Slack)
 

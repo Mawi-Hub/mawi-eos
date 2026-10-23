@@ -156,7 +156,7 @@ export function SummaryEditor(props: Props) {
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
-          Todavía no hay borrador. Se genera solo el viernes a las 12:00{props.canManage ? ", o generalo ahora." : "."}
+          Todavía no hay borrador. Se genera solo el viernes a las 13:00{props.canManage ? ", o generalo ahora." : "."}
         </div>
       )}
     </div>

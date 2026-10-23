@@ -90,7 +90,7 @@ export function inviteBlocks(input: {
     ? `✅ *Recibimos tu check-in de la semana del ${week}.* Gracias, ${neutralizeSlack(input.firstName)}. Podés editarlo hasta que se publique el resumen.`
     : input.reminder
       ? `⏰ ${neutralizeSlack(input.firstName)}, todavía falta tu check-in de *${neutralizeSlack(input.teamName)}* (semana del ${week}). ` +
-        `Cierra hoy a las 11:00 para armar el resumen de la empresa.`
+        `Respondé antes de las 13:00, cuando armamos el resumen de la empresa.`
       : `👋 ¡Hola ${neutralizeSlack(input.firstName)}! Es hora del check-in semanal de *${neutralizeSlack(input.teamName)}* (semana del ${week}).\n` +
         `Son 4 preguntas cortas sobre tu aporte a los Rocks y KPIs del área. Tus números de sistemas ya vienen cargados.`;
   return {

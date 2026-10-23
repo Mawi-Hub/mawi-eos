@@ -2,7 +2,9 @@
 //
 //   jueves 15:00 CR  → DM a cada persona con su equipo asignado (botón)
 //   viernes 08:00 CR → recordatorio a quien no respondió
-//   viernes 11:00 CR → se arma el resumen con lo que haya (no hay corte duro)
+//   viernes 10:00 CR → cada manager recibe quién de su área falta (followUp.ts)
+//   viernes 11:00 CR → aviso en el canal con cuántos faltan, sin nombres
+//   viernes 13:00 CR → se arma el resumen con lo que haya (no hay corte duro)
 //
 // La respuesta se guarda en EOS (TeamCheckin), se refleja en CheckinEvidence
 // para que la preparación de líderes y el resumen de management la usen, y se

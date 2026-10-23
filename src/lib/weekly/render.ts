@@ -65,6 +65,8 @@ export type WeekData = {
   // Personas que respondieron (incluye respuestas ocultas del resumen).
   responded: number;
   expected: number;
+  // Respondieron / esperados por área, para el pie del resumen.
+  areaParticipation?: Array<{ name: string; responded: number; expected: number }>;
   // Energía agregada; nunca por persona.
   energy: EnergySummary | null;
   management: WeekManagement | null;
@@ -177,7 +179,8 @@ function commitments(d: WeekData): string | null {
 function footer(d: WeekData): string {
   const energy =
     d.energy && d.energy.count >= ENERGY_MIN_SAMPLE ? ` Energía del equipo: ${String(d.energy.average).replace(".", ",")}/5.` : "";
-  const participation = `Respondieron ${d.responded} de ${Math.max(d.expected, d.responded)} personas.${energy}`;
+  const byArea = (d.areaParticipation ?? []).filter((a) => a.expected > 0).map((a) => `${a.name} ${a.responded}/${a.expected}`);
+  const participation = `Respondieron ${d.responded} de ${Math.max(d.expected, d.responded)} personas${byArea.length ? ` (${byArea.join(" · ")})` : ""}.${energy}`;
   return `_${participation}${d.detailUrl ? ` Detalle por persona y números: ${d.detailUrl}` : ""}_`;
 }
 

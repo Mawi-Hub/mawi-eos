@@ -72,3 +72,9 @@ test("la energía se muestra solo agregada y con muestra suficiente", () => {
   assert.match(renderWeeklyDraft({ ...base, energy: { average: 3.8, count: 5, low: 1 } }, null), /Energía del equipo: 3,8\/5\./);
   assert.doesNotMatch(renderWeeklyDraft({ ...base, energy: { average: 4, count: 2, low: 0 } }, null), /Energía/, "con menos de 3 respuestas no se muestra");
 });
+
+test("el pie muestra la participación por área sin nombres", () => {
+  const draft = renderWeeklyDraft({ ...base, areaParticipation: [{ name: "Ventas", responded: 1, expected: 1 }, { name: "Producto", responded: 0, expected: 2 }, { name: "Vacía", responded: 0, expected: 0 }] }, null);
+  assert.match(draft, /Respondieron 1 de 3 personas \(Ventas 1\/1 · Producto 0\/2\)\./);
+  assert.doesNotMatch(draft, /Vacía/);
+});
