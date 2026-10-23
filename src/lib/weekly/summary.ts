@@ -191,6 +191,10 @@ export async function loadWeek(periodStart: Date, options: { now?: Date } = {}):
       responded: checkins.length,
       energy: summarizeEnergy(checkins.map((c) => c.energy)),
       expected: members.length,
+      areaParticipation: areas.map((a) => {
+        const responded = checkins.filter((c) => c.areaKey === a.key).length;
+        return { name: a.name, responded, expected: Math.max(members.filter((m) => m.areaKey === a.key).length, responded) };
+      }),
       management,
       detailUrl: weekUrl(periodStart),
     },

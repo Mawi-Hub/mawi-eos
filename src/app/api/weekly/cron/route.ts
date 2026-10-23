@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-// Borrador del resumen semanal. Vercel Cron los viernes 12:00 CR (18:00 UTC):
+// Borrador del resumen semanal. Vercel Cron los viernes 13:00 CR (19:00 UTC):
 // arma el borrador con lo que haya y le avisa por DM a quien facilita (o al CEO
 // si no hay facilitador) para que lo revise y lo envíe desde la página Semana.
 // Nunca publica solo. `?dryRun=1` devuelve el borrador sin guardar ni avisar.

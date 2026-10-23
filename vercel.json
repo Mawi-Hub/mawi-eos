@@ -28,12 +28,20 @@
       "schedule": "45 14 * * 5"
     },
     {
+      "path": "/api/checkin/team?step=managers",
+      "schedule": "0 16 * * 5"
+    },
+    {
+      "path": "/api/checkin/team?step=channel",
+      "schedule": "0 17 * * 5"
+    },
+    {
       "path": "/api/l10/digest",
       "schedule": "15 15 * * 5"
     },
     {
       "path": "/api/weekly/cron",
-      "schedule": "0 18 * * 5"
+      "schedule": "0 19 * * 5"
     }
   ]
 }
