@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { canManageMeetings } from "@/lib/l10Permissions";
 import { isLeaderRole } from "@/lib/access";
-import { THREAD_MARKER } from "@/lib/weekly/render";
+import { THREAD_MARKER, withCurrentMetrics } from "@/lib/weekly/render";
 import { checkinPeriodStart, crIsoDate, formatCrDateTime } from "@/lib/time/costaRica";
 import { periodFromIso, weekParticipation } from "@/lib/checkin/teamCheckin";
 import { weekLabel } from "@/lib/checkin/teamForm";
@@ -230,7 +230,11 @@ export default async function SemanaPage({ searchParams }: { searchParams: Promi
         <SummaryEditor
           key={`${week}:${summary?.generatedAt?.toISOString() ?? ""}:${summary?.editedAt?.toISOString() ?? ""}:${summary?.status ?? ""}`}
           week={week}
-          initialText={summary?.draftText ?? null}
+          initialText={
+            summary?.draftText && (summary.status === "draft" || summary.status === "failed")
+              ? withCurrentMetrics(summary.draftText, loaded.data.companyMetrics)
+              : summary?.draftText ?? null
+          }
           status={summary?.status ?? "draft"}
           canManage={canManage}
           channelConfigured={!!weeklyChannel()}

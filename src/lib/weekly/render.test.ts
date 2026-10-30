@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { draftToParts, parseNarrative, renderWeeklyDraft, summarizeEnergy, THREAD_MARKER, type WeekData } from "./render";
+import { draftToParts, parseNarrative, renderWeeklyDraft, summarizeEnergy, THREAD_MARKER, withCurrentMetrics, type WeekData } from "./render";
 
 const base: WeekData = {
   periodStart: new Date("2026-10-12T06:00:00Z"),
@@ -88,4 +88,21 @@ test("lo que escuchamos solo muestra el resumen compartible del IDS", () => {
   assert.match(draft, /Importación desde Excel: lo llevamos a la reunión de management\. Ingeniería pagina/);
   assert.match(draft, /Avance de obra: lo llevamos a la reunión de management\. Quedó resuelto\./);
   assert.doesNotMatch(renderWeeklyDraft(base, null), /Lo que escuchamos/);
+});
+
+test("la línea de métricas del borrador se actualiza sin tocar lo editado", () => {
+  const draft = renderWeeklyDraft(base, null).replace("Rúbrica BANT propuesta", "Rúbrica BANT aprobada");
+  const fresh = withCurrentMetrics(draft, [{ label: "MRR", valueText: "$49.1K", targetText: "$50K", signal: "on_track" }]);
+  assert.match(fresh, /MRR \*\$49\.1K\*/);
+  assert.doesNotMatch(fresh, /\$48\.2K/);
+  assert.match(fresh, /Rúbrica BANT aprobada/);
+  assert.equal(fresh.split("\n")[0], draft.split("\n")[0]);
+  // Sin métricas en el borrador original, se agrega la línea.
+  const bare = renderWeeklyDraft({ ...base, companyMetrics: [] }, null);
+  assert.match(withCurrentMetrics(bare, base.companyMetrics), /^\*Mawi · Semana[^\n]*\n🟡 MRR \*\$48\.2K\*/);
+  // Sin métricas actuales no se borra la línea que había.
+  assert.equal(withCurrentMetrics(draft, []), draft);
+  // Un encabezado reescrito a mano no se toca.
+  const custom = "Hola equipo\nMRR $1\n\nresto";
+  assert.equal(withCurrentMetrics(custom, base.companyMetrics), custom);
 });

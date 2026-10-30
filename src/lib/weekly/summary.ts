@@ -19,7 +19,7 @@ import { listCheckinMembers } from "@/lib/checkin/teamCheckin";
 import { teamConfig } from "@/lib/checkin/teams";
 import { claudeJson } from "./claude";
 import { readThemes } from "./themes";
-import { draftToParts, narrativePrompt, parseNarrative, renderWeeklyDraft, summarizeEnergy, type WeekAnswer, type WeekArea, type WeekData, type WeekManagement, type WeekMetric } from "./render";
+import { draftToParts, narrativePrompt, withCurrentMetrics, parseNarrative, renderWeeklyDraft, summarizeEnergy, type WeekAnswer, type WeekArea, type WeekData, type WeekManagement, type WeekMetric } from "./render";
 
 export function weeklyChannel(): string | null {
   const v = process.env.WEEKLY_CHANNEL_ID?.trim();
@@ -45,6 +45,47 @@ export type LoadedWeek = {
 };
 
 const ROCK_STATUS = new Set(["on_track", "riesgo", "off_track", "done"]);
+
+// Métricas de empresa de la semana: último dato hasta el cierre de la semana,
+// con la señal contra la meta del trimestre.
+async function loadCompanyMetrics(periodStart: Date, quarterId: string | null, now: Date): Promise<WeekMetric[]> {
+  const periodEnd = crWeekEnd(periodStart);
+  const companyMetrics: WeekMetric[] = [];
+  const names = companyMetricNames();
+  if (!names.length) return companyMetrics;
+  const found = await prisma.scorecardMetric.findMany({
+    where: { name: { in: names } },
+    include: { entries: { where: { periodStart: { lte: periodEnd } }, orderBy: { periodStart: "desc" }, take: 1 } },
+  });
+  const signals = quarterId ? (await getQuarterSelection(quarterId, { now: periodEnd < now ? periodEnd : now })).rows : [];
+  for (const name of names) {
+    const m = found.find((x) => x.name === name);
+    if (!m) continue;
+    const entry = m.entries[0] ?? null;
+    const state = resolveDataState(entry, { frequency: m.frequency, now: periodEnd < now ? periodEnd : now, autoSynced: m.dataSource !== "manual" });
+    const sel = signals.find((r) => r.scorecardMetricId === m.id || r.metric?.id === m.id);
+    companyMetrics.push({
+      label: m.name,
+      valueText: isActionableState(state) && entry ? entry.actualDisplay ?? formatMetricValue(entry.actualValue, m.unit) : null,
+      targetText: sel?.targetText ?? null,
+      signal: sel?.signal ?? null,
+    });
+  }
+  return companyMetrics;
+}
+
+async function weekQuarterId(periodStart: Date): Promise<string | null> {
+  const periodEnd = crWeekEnd(periodStart);
+  const quarter =
+    (await prisma.quarter.findFirst({ where: { startDate: { lte: periodEnd }, endDate: { gte: periodStart } }, orderBy: { startDate: "desc" } })) ??
+    (await prisma.quarter.findFirst({ where: { isActive: true } }));
+  return quarter?.id ?? null;
+}
+
+// Borrador con la línea de métricas al día (ver withCurrentMetrics).
+export async function draftWithCurrentMetrics(periodStart: Date, draft: string, now = new Date()): Promise<string> {
+  return withCurrentMetrics(draft, await loadCompanyMetrics(periodStart, await weekQuarterId(periodStart), now));
+}
 
 export async function loadWeek(periodStart: Date, options: { now?: Date } = {}): Promise<LoadedWeek> {
   const now = options.now ?? new Date();
@@ -95,28 +136,7 @@ export async function loadWeek(periodStart: Date, options: { now?: Date } = {}):
   }
 
   // ---- Métricas de empresa (las mismas que el resumen de management) -------
-  const companyMetrics: WeekMetric[] = [];
-  const names = companyMetricNames();
-  if (names.length) {
-    const found = await prisma.scorecardMetric.findMany({
-      where: { name: { in: names } },
-      include: { entries: { where: { periodStart: { lte: periodEnd } }, orderBy: { periodStart: "desc" }, take: 1 } },
-    });
-    const signals = quarter ? (await getQuarterSelection(quarter.id, { now: periodEnd < now ? periodEnd : now })).rows : [];
-    for (const name of names) {
-      const m = found.find((x) => x.name === name);
-      if (!m) continue;
-      const entry = m.entries[0] ?? null;
-      const state = resolveDataState(entry, { frequency: m.frequency, now: periodEnd < now ? periodEnd : now, autoSynced: m.dataSource !== "manual" });
-      const sel = signals.find((r) => r.scorecardMetricId === m.id || r.metric?.id === m.id);
-      companyMetrics.push({
-        label: m.name,
-        valueText: isActionableState(state) && entry ? entry.actualDisplay ?? formatMetricValue(entry.actualValue, m.unit) : null,
-        targetText: sel?.targetText ?? null,
-        signal: sel?.signal ?? null,
-      });
-    }
-  }
+  const companyMetrics = await loadCompanyMetrics(periodStart, quarter?.id ?? null, now);
 
   // ---- Respuestas del equipo (sin las ocultas ni las sensibles) -------------
   const answers: WeekAnswer[] = [];
@@ -295,7 +315,10 @@ export async function sendSummary(
 
   const row = await prisma.weeklySummary.findUnique({ where: { periodStart } });
   if (!row?.draftText?.trim()) throw new SummaryError("no_draft", "Primero generá o escribí el borrador.");
-  const parts = draftToParts(row.draftText);
+  // Los números del encabezado salen como están al enviar, no como estaban al generar.
+  const draftText = row.status === "sent" || row.status === "sending" ? row.draftText : await draftWithCurrentMetrics(periodStart, row.draftText);
+  if (draftText !== row.draftText) await prisma.weeklySummary.update({ where: { id: row.id }, data: { draftText } });
+  const parts = draftToParts(draftText);
   if (!parts.length) throw new SummaryError("no_draft", "El borrador está vacío.");
 
   // Reclamo atómico: un doble clic o dos pestañas no publican dos veces.
