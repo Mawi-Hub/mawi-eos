@@ -89,17 +89,33 @@ const PREV_EMOJI: Record<string, string> = { done: "✅", partial: "🟡", not_d
 const s = (t: string) => neutralizeSlack(t);
 const line = (t: string, max = 280) => oneLine(t, max);
 
+function metricsLine(companyMetrics: WeekMetric[]): string | null {
+  const metrics = companyMetrics.filter((m) => m.valueText);
+  if (!metrics.length) return null;
+  return metrics
+    .map((m) => `${m.signal ? `${SIGNAL_EMOJI[m.signal]} ` : ""}${s(m.label)} *${s(m.valueText!)}*${m.targetText ? ` (meta ${s(m.targetText)})` : ""}`)
+    .join(" · ");
+}
+
 function header(d: WeekData): string {
-  const lines = [`*Mawi · Semana del ${weekLabel(d.periodStart)}*`];
-  const metrics = d.companyMetrics.filter((m) => m.valueText);
-  if (metrics.length) {
-    lines.push(
-      metrics
-        .map((m) => `${m.signal ? `${SIGNAL_EMOJI[m.signal]} ` : ""}${s(m.label)} *${s(m.valueText!)}*${m.targetText ? ` (meta ${s(m.targetText)})` : ""}`)
-        .join(" · "),
-    );
-  }
-  return lines.join("\n");
+  const metrics = metricsLine(d.companyMetrics);
+  return [`*Mawi · Semana del ${weekLabel(d.periodStart)}*`, metrics].filter(Boolean).join("\n");
+}
+
+// El borrador se arma el viernes a las 13:00 CR, pero las métricas se pueden
+// volver a sincronizar después (un ajuste en ChartMogul, una carga manual). La
+// línea de métricas del encabezado se reemplaza con los valores actuales; el
+// título y el resto del borrador (posiblemente editados) quedan como están.
+// Si el encabezado ya no tiene la forma "título + línea de métricas", no se toca.
+export function withCurrentMetrics(draft: string, companyMetrics: WeekMetric[]): string {
+  const cut = draft.indexOf("\n\n");
+  const head = cut === -1 ? draft : draft.slice(0, cut);
+  const rest = cut === -1 ? "" : draft.slice(cut);
+  const lines = head.split("\n");
+  const metrics = metricsLine(companyMetrics);
+  // Sin datos actuales (config ausente, dato vencido) se deja lo que había.
+  if (!metrics || !lines[0]?.startsWith("*Mawi · Semana") || lines.length > 2) return draft;
+  return `${lines[0]}\n${metrics}${rest}`;
 }
 
 function priorities(d: WeekData): string {
